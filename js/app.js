@@ -1,7 +1,7 @@
-import * as db from './db.js?v=4';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=4';
-import { generateAlbum, rerollPage, templateById } from './layout.js?v=4';
-import { THEMES, renderPage, ensureFonts } from './render.js?v=4';
+import * as db from './db.js?v=5';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=5';
+import { generateAlbum, rerollPage, templateById } from './layout.js?v=5';
+import { THEMES, renderPage, ensureFonts } from './render.js?v=5';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -235,8 +235,44 @@ if (isIOS || isAndroid) $('#dropzone .dz-title').textContent = 'העלאת תמ�
 if (isIOS) $('#iosTip').classList.remove('hidden');
 if (isAndroid) $('#androidTip').classList.remove('hidden');
 
+// ---- paste photos copied from the Photos app (iPhone: Select All → Copy) ----
+$('#pasteBtn').onclick = async e => {
+  e.stopPropagation();
+  if (!navigator.clipboard?.read) {
+    toast('הדפדפן לא מאפשר הדבקה בכפתור – נסו ללחוץ לחיצה ארוכה על אזור ההעלאה ולבחור "הדבק"', 6000);
+    return;
+  }
+  try {
+    const items = await navigator.clipboard.read();
+    const files = [];
+    let i = 0;
+    for (const item of items) {
+      const type = item.types.find(t => t.startsWith('image/'));
+      if (!type) continue;
+      const blob = await item.getType(type);
+      files.push(new File([blob], `pasted-${Date.now()}-${++i}.${type.split('/')[1] || 'jpg'}`, { type, lastModified: Date.now() }));
+    }
+    if (!files.length) { toast('לא נמצאו תמונות בהעתקה. העתיקו תמונות מאפליקציית התמונות ונסו שוב.', 6000); return; }
+    toast(`מדביק ${files.length} תמונות…`);
+    addFiles(files);
+  } catch (err) {
+    console.warn(err);
+    toast('ההדבקה לא אושרה. לחצו שוב ובחרו "הדבק" בבועה שמופיעה.', 6000);
+  }
+};
+// also support the regular paste gesture / Ctrl+V while on the photos tab
+document.addEventListener('paste', e => {
+  if (!state.album || $('#photosTab').classList.contains('hidden')) return;
+  if (e.target.closest && e.target.closest('input, textarea, [contenteditable="true"]')) return;
+  const files = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  e.preventDefault();
+  let i = 0;
+  addFiles(files.map(f => new File([f], f.name && f.name !== 'image.png' ? f.name : `pasted-${Date.now()}-${++i}.${f.type.split('/')[1]}`, { type: f.type, lastModified: f.lastModified || Date.now() })));
+});
+
 const dz = $('#dropzone');
-dz.addEventListener('click', e => { if (!e.target.closest('button')) fileInput.click(); });
+dz.addEventListener('click', e => { if (!e.target.closest('button, .dz-tip')) fileInput.click(); });
 ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('over'); }));
 dz.addEventListener('drop', async e => {

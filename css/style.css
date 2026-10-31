@@ -240,3 +240,10 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
 }
 .photo.broken { background: #e9e3d9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext x='4' y='17' font-size='14'%3E%E2%9A%A0%EF%B8%8F%3C/text%3E%3C/svg%3E") center / 40px no-repeat; }
 .photo.broken img { visibility: hidden; }
+
+.dz-tip { text-align: right; }
+.dz-tip ol { margin: 6px 0 4px; padding-inline-start: 20px; }
+.dz-tip li { margin: 3px 0; }
+.dz-tip details { margin-top: 6px; }
+.dz-tip summary { cursor: pointer; color: var(--primary); font-weight: 500; }
+.ios-share { display: inline-block; border: 1.5px solid currentColor; border-radius: 4px; padding: 0 4px; font-size: .8em; line-height: 1.3; }

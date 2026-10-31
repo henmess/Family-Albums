@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Rubik:wght@300;400;500;700&family=Secular+One&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=4">
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
   <header class="topbar">
@@ -52,10 +52,26 @@
           <div class="dz-buttons">
             <button class="btn primary" id="pickFilesBtn">בחירת תמונות</button>
             <button class="btn ghost" id="pickFolderBtn">📁 העלאת תיקייה / אלבום שלם</button>
+            <button class="btn ghost" id="pasteBtn">📋 הדבקת תמונות שהועתקו</button>
           </div>
           <div class="dz-sub">אפשר להעלות מאות תמונות בבת אחת. המערכת תזהה כפילויות ותבחר את הטובות ביותר.</div>
-          <div class="dz-tip hidden" id="iosTip">💡 באייפון: בחלון שנפתח עברו ללשונית <b>"אוספים"</b> או <b>"אלבומים"</b>, פתחו את האלבום הרצוי
-            והחליקו אצבע על התמונות כדי לסמן הרבה בבת אחת.</div>
+          <div class="dz-tip hidden" id="iosTip">
+            <b>💡 איך מוסיפים אלבום שלם מהאייפון:</b>
+            <ol>
+              <li>פותחים את אפליקציית <b>תמונות</b> ← <b>אלבומים</b> ← האלבום הרצוי.</li>
+              <li>לוחצים <b>"בחר"</b> (למעלה) ואז <b>"בחר הכל"</b>.</li>
+              <li>לוחצים על כפתור השיתוף <span class="ios-share">⬆︎</span> ← <b>"העתק"</b> (או "העתק תמונות").</li>
+              <li>חוזרים לכאן ולוחצים <b>"📋 הדבקת תמונות שהועתקו"</b>. אם מופיעה בועה "הדבק" – לוחצים עליה.</li>
+            </ol>
+            <details>
+              <summary>לא עבד? דרך נוספת דרך "קבצים"</summary>
+              <ol>
+                <li>באותו מקום, במקום "העתק" בוחרים <b>"שמור בקבצים"</b> ושומרים בתיקייה חדשה.</li>
+                <li>כאן לוחצים <b>"בחירת תמונות"</b> ← <b>"בחירת קובץ"</b>.</li>
+                <li>פותחים את התיקייה, לוחצים <b>"בחר"</b> ו<b>"בחר הכל"</b> ← <b>"פתח"</b>.</li>
+              </ol>
+            </details>
+          </div>
           <div class="dz-tip hidden" id="androidTip">💡 באנדרואיד: בחלון שנפתח עברו ל<b>"אלבומים"</b>, פתחו את האלבום הרצוי,
             לחצו לחיצה ארוכה על תמונה ראשונה והחליקו כדי לסמן הרבה בבת אחת.</div>
         </div>
@@ -157,7 +173,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/app.js?v=5"></script>
   <script>
     // if the app didn't start (e.g. an old cached file after an update), offer a refresh
     setTimeout(function () {
