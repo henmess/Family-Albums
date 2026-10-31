@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>אלבומי המשפחה</title>
+  <meta name="description" content="מעצב אלבומי תמונות משפחתיים אוטומטי – מעלים תמונות ומקבלים אלבום מעוצב ומוכן להדפסה">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📸</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Rubik:wght@300;400;500;700&family=Secular+One&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="#" class="brand" id="homeLink"><span class="logo">📸</span> אלבומי המשפחה</a>
+    <span class="tagline">מעלים תמונות – מקבלים אלבום מעוצב ומוכן להדפסה</span>
+  </header>
+
+  <main id="app">
+    <!-- Home: list of albums -->
+    <section id="homeView" class="view">
+      <div class="home-head">
+        <h1>האלבומים שלי</h1>
+        <button class="btn primary" id="newAlbumBtn">＋ אלבום חדש</button>
+      </div>
+      <div id="albumGrid" class="album-grid"></div>
+      <p class="privacy">🔒 התמונות נשמרות רק בדפדפן שלך במכשיר הזה ולא נשלחות לשום שרת.</p>
+    </section>
+
+    <!-- Album -->
+    <section id="albumView" class="view hidden">
+      <div class="album-head">
+        <button class="btn ghost" id="backBtn">→ כל האלבומים</button>
+        <h1 id="albumName" contenteditable="true" spellcheck="false" title="לחצו כדי לשנות שם"></h1>
+        <div class="spacer"></div>
+        <button class="btn ghost danger" id="deleteAlbumBtn">מחיקת אלבום</button>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab active" data-tab="photos">1. התמונות</button>
+        <button class="tab" data-tab="design">2. העיצוב</button>
+      </nav>
+
+      <!-- Photos tab -->
+      <div id="photosTab" class="tab-panel">
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/*" multiple hidden>
+          <div class="dz-icon">🖼️</div>
+          <div class="dz-title">גררו לכאן תמונות או לחצו לבחירה</div>
+          <div class="dz-sub">אפשר להעלות מאות תמונות בבת אחת. המערכת תזהה כפילויות ותבחר את הטובות ביותר.</div>
+        </label>
+        <div id="progress" class="progress hidden"><div class="bar"></div><span class="label"></span></div>
+
+        <div id="photoStats" class="stats hidden"></div>
+        <div class="filters hidden" id="filters">
+          <button class="chip active" data-filter="all">הכול</button>
+          <button class="chip" data-filter="in">נבחרו</button>
+          <button class="chip" data-filter="dup">כפילויות</button>
+          <button class="chip" data-filter="weak">חלשות</button>
+          <span class="hint">לחיצה על תמונה מכניסה/מוציאה אותה מהאלבום</span>
+        </div>
+        <div id="photoGrid" class="photo-grid"></div>
+        <div class="next-row hidden" id="toDesignRow">
+          <button class="btn primary big" id="toDesignBtn">✨ עצבו לי את האלבום</button>
+        </div>
+      </div>
+
+      <!-- Design tab -->
+      <div id="designTab" class="tab-panel hidden">
+        <div class="design-layout">
+          <aside class="panel">
+            <h3>כותרת האלבום</h3>
+            <input id="titleInput" class="input" placeholder="למשל: משפחת כהן">
+            <input id="subtitleInput" class="input" placeholder="כותרת משנה, למשל: קיץ 2025">
+
+            <h3>סגנון עיצוב</h3>
+            <div id="themePicker" class="theme-picker"></div>
+
+            <h3>גודל האלבום</h3>
+            <select id="formatSelect" class="input"></select>
+
+            <h3>צפיפות</h3>
+            <div class="seg" id="densitySeg">
+              <button data-v="airy">מרווח</button>
+              <button data-v="normal">מאוזן</button>
+              <button data-v="packed">הרבה תמונות</button>
+            </div>
+
+            <h3>כמה תמונות לכלול</h3>
+            <div class="range-row">
+              <input type="range" id="maxPhotos" min="0" max="100" step="1">
+              <span id="maxPhotosLabel"></span>
+            </div>
+
+            <label class="check"><input type="checkbox" id="chaptersChk"> עמודי פתיחה לכל אירוע (לפי תאריכים)</label>
+            <label class="check"><input type="checkbox" id="bleedChk"> שוליים לחיתוך (Bleed 3 מ"מ) – לפי דרישת בית הדפוס</label>
+
+            <div class="panel-actions">
+              <button class="btn primary" id="regenBtn">🎲 עיצוב חדש</button>
+            </div>
+            <hr>
+            <h3>הדפסה</h3>
+            <div class="seg" id="dpiSeg">
+              <button data-v="200">איכות טובה</button>
+              <button data-v="300">איכות דפוס (300DPI)</button>
+            </div>
+            <button class="btn accent big full" id="exportBtn">⬇️ הורדת PDF להדפסה</button>
+            <p class="small" id="pageCount"></p>
+          </aside>
+
+          <div class="preview">
+            <div id="redesignBanner" class="banner hidden">
+              נוספו תמונות חדשות לאלבום.
+              <button class="btn small primary" id="bannerRegen">לעצב מחדש</button>
+            </div>
+            <div id="pages" class="pages"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="modalTitle"></h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="modalCancel">ביטול</button>
+        <button class="btn primary" id="modalOk">אישור</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
