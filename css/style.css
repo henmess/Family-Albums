@@ -311,3 +311,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
   .ed-side { border-inline-start: none; border-top: 1px solid var(--line); overflow: visible; }
   .ed-head { flex-wrap: wrap; }
 }
+
+.ed-pos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 10px; }
+.ed-pos .btn { border-color: var(--line); padding: 6px 4px; }
+.ed-sel.text { border-color: #ff7a1a; border-style: dashed; }
+#edTextSizeLbl { min-width: 48px; font-size: .85rem; }

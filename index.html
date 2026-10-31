@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Bellefair&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Karantina:wght@400;700&family=Rubik:wght@300;400;500;700&family=Secular+One&family=Suez+One&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=6">
+  <link rel="stylesheet" href="css/style.css?v=7">
 </head>
 <body>
   <header class="topbar">
@@ -180,6 +180,21 @@
           <p class="ed-hint" id="edHint">לחצו על תמונה כדי לבחור אותה · גררו את התמונה כדי לשנות את החיתוך</p>
         </div>
         <aside class="ed-side">
+          <section id="edTextSel" class="ed-sec hidden">
+            <h4>הטקסט שנבחר</h4>
+            <label class="lbl">גודל הטקסט</label>
+            <div class="range-row"><input type="range" id="edTextSize" min="0.4" max="2.5" step="0.05"><span id="edTextSizeLbl"></span></div>
+            <label class="lbl">מיקום (אפשר גם לגרור את הטקסט על העמוד)</label>
+            <div class="ed-pos">
+              <button class="btn small" data-v="top">⬆ למעלה</button>
+              <button class="btn small" data-v="middle">↕ באמצע</button>
+              <button class="btn small" data-v="bottom">⬇ למטה</button>
+              <button class="btn small" data-h="right">➡ ימין</button>
+              <button class="btn small" data-h="center">↔ מרכז</button>
+              <button class="btn small" data-h="left">⬅ שמאל</button>
+            </div>
+            <button class="btn small ghost" id="edTextReset">איפוס מיקום וגודל</button>
+          </section>
           <section id="edSlot" class="ed-sec hidden">
             <h4>התמונה שנבחרה</h4>
             <div class="ed-btns">
@@ -244,7 +259,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=6"></script>
+  <script type="module" src="js/app.js?v=7"></script>
   <script>
     // if the app didn't start (e.g. an old cached file after an update), offer a refresh
     setTimeout(function () {

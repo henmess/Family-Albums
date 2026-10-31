@@ -1,7 +1,7 @@
-import * as db from './db.js?v=6';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=6';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=6';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=6';
+import * as db from './db.js?v=7';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=7';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=7';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=7';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -813,7 +813,7 @@ async function exportPDF() {
 
 
 // ================= page editor =================
-const ed = { index: -1, page: null, sel: null, swap: false, slots: [], scale: 1, rendering: false, again: false, album: null };
+const ed = { index: -1, page: null, sel: null, selText: null, texts: [], swap: false, slots: [], scale: 1, rendering: false, again: false, album: null };
 
 function edEnv() {
   const a = state.album;
@@ -840,6 +840,7 @@ async function edRender() {
     c.style.width = env.cssW + 'px';
     old.replaceWith(c);
     ed.slots = res.slots;
+    ed.texts = res.texts || [];
     ed.scale = env.cssW / c.width;
     c.onpointerdown = edPointerDown;
     edDrawSel();
@@ -851,11 +852,57 @@ async function edRender() {
 
 function edDrawSel() {
   const box = $('#edSel');
-  const s = ed.slots.find(x => x.index === ed.sel);
+  const s = ed.selText ? ed.texts.find(x => x.id === ed.selText) : ed.slots.find(x => x.index === ed.sel);
   box.classList.toggle('hidden', !s);
   box.classList.toggle('swap', ed.swap);
+  box.classList.toggle('text', !!ed.selText);
   if (!s) return;
   Object.assign(box.style, { left: s.x * ed.scale + 'px', top: s.y * ed.scale + 'px', width: s.w * ed.scale + 'px', height: s.h * ed.scale + 'px' });
+}
+
+function edHitText(ev) {
+  const rect = $('#edCanvas').getBoundingClientRect();
+  const x = (ev.clientX - rect.left) / ed.scale, y = (ev.clientY - rect.top) / ed.scale;
+  for (let i = ed.texts.length - 1; i >= 0; i--) {
+    const t = ed.texts[i];
+    if (x >= t.x && x <= t.x + t.w && y >= t.y && y <= t.y + t.h) return t;
+  }
+  return null;
+}
+
+// settings of a text group; the automatic top/bottom choice is frozen once the user moves it
+function textCfg(id) {
+  ed.page.text ||= {};
+  const t = (ed.page.text[id] ||= {});
+  const box = ed.texts.find(x => x.id === id);
+  if (t.top == null && box && box.top != null) t.top = box.top;
+  return t;
+}
+
+// the editor canvas is replaced on every redraw, so drags are tracked on the window
+function trackDrag(move) {
+  const up = () => {
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', up);
+    window.removeEventListener('pointercancel', up);
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
+
+function edTextDrag(ev, hit) {
+  const t = textCfg(hit.id);
+  const canvas = $('#edCanvas');
+  const W = canvas.width, H = canvas.height;
+  const start = { x: ev.clientX, y: ev.clientY, dx: t.dx || 0, dy: t.dy || 0 };
+  let raf = 0;
+  const move = e => {
+    t.dx = start.dx + (e.clientX - start.x) / ed.scale / W;
+    t.dy = start.dy + (e.clientY - start.y) / ed.scale / H;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; edRender(); });
+  };
+  trackDrag(move);
 }
 
 function edHit(ev) {
@@ -877,6 +924,15 @@ function cropFor(i) {
 }
 
 function edPointerDown(ev) {
+  // titles and captions sit on top of the photos, so they are checked first
+  const th = !ed.swap && edHitText(ev);
+  if (th) {
+    ed.selText = th.id; ed.sel = null;
+    edUpdatePanel(); edDrawSel();
+    edTextDrag(ev, th);
+    return;
+  }
+  ed.selText = null;
   const hit = edHit(ev);
   if (!hit) { ed.sel = null; ed.swap = false; edUpdatePanel(); edDrawSel(); return; }
   if (ed.swap && ed.sel != null && hit.index !== ed.sel) {
@@ -896,7 +952,6 @@ function edPointerDown(ev) {
   const crop = cropFor(hit.index);
   const start = { x: ev.clientX, y: ev.clientY, cx: crop.x, cy: crop.y };
   const canvas = $('#edCanvas');
-  canvas.setPointerCapture(ev.pointerId);
   let raf = 0;
   const move = e => {
     const wPx = hit.w * ed.scale, hPx = hit.h * ed.scale;
@@ -906,10 +961,7 @@ function edPointerDown(ev) {
     crop.y = Math.max(fh / 2, Math.min(1 - fh / 2, start.cy - (e.clientY - start.y) / hPx * fh));
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; edRender(); });
   };
-  const up = () => { canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerup', up); canvas.removeEventListener('pointercancel', up); };
-  canvas.addEventListener('pointermove', move);
-  canvas.addEventListener('pointerup', up);
-  canvas.addEventListener('pointercancel', up);
+  trackDrag(move);
 }
 
 function edTheme() { return effectiveTheme(ed.page, themeOf(state.album)); }
@@ -927,13 +979,20 @@ function relayout(photoIds, avoid) {
 function edUpdatePanel() {
   const pg = ed.page;
   const isPhotos = pg.type === 'photos';
-  const hasSel = ed.sel != null && pg.photos.length > 0 && pg.type !== 'end';
+  const hasSel = ed.sel != null && !ed.selText && pg.photos.length > 0 && pg.type !== 'end';
   $('#edSlot').classList.toggle('hidden', !hasSel);
+  $('#edTextSel').classList.toggle('hidden', !ed.selText);
+  if (ed.selText) {
+    const sc = pg.text?.[ed.selText]?.scale || 1;
+    $('#edTextSize').value = sc;
+    $('#edTextSizeLbl').textContent = Math.round(sc * 100) + '%';
+  }
   $('#edSwap').classList.toggle('hidden', !isPhotos || pg.photos.length < 2);
   $('#edRemove').classList.toggle('hidden', !isPhotos);
   $('#edSwap').textContent = ed.swap ? 'בחרו תמונה להחלפה…' : '↔ החלפת מקום';
   $('#edHint').textContent = ed.swap ? 'לחצו על התמונה שאיתה להחליף מקום'
-    : hasSel ? 'גררו את התמונה המסומנת כדי לשנות את החיתוך' : 'לחצו על תמונה כדי לבחור אותה';
+    : ed.selText ? 'גררו את הטקסט למקום אחר · את הגודל משנים בפאנל'
+    : hasSel ? 'גררו את התמונה המסומנת כדי לשנות את החיתוך' : 'לחצו על תמונה או על כותרת כדי לבחור אותה';
   if (hasSel) {
     const pid = pg.photos[ed.sel];
     $('#edZoom').value = pg.crops?.[pid]?.zoom || 1;
@@ -1020,6 +1079,7 @@ async function openEditor(i) {
   ed.page = structuredClone(a.pages[i]);
   ed.album = { ...a, pages: undefined };
   ed.sel = ed.page.photos.length === 1 ? 0 : null;
+  ed.selText = null;
   ed.swap = false;
   const label = i === 0 ? 'כריכה' : ({ chapter: 'פתיחת פרק', end: 'עמוד סיום' }[ed.page.type] || 'עמוד');
   $('#edTitle').textContent = `${label} · ${i === 0 ? '' : i + ' מתוך ' + (a.pages.length - 1)}`.replace(/ · $/, '');
@@ -1054,6 +1114,34 @@ $('#edPrev').onclick = async () => { await edCommit(); openEditor(ed.index - 1);
 $('#edNext').onclick = async () => { await edCommit(); openEditor(ed.index + 1); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#editor').classList.contains('hidden') && $('#picker').classList.contains('hidden')) closeEditor(); });
 window.addEventListener('resize', debounce(() => { if (!$('#editor').classList.contains('hidden')) edRender(); }, 200));
+
+$('#edTextSize').oninput = () => {
+  if (!ed.selText) return;
+  const t = textCfg(ed.selText);
+  t.scale = +$('#edTextSize').value;
+  $('#edTextSizeLbl').textContent = Math.round(t.scale * 100) + '%';
+  edRender();
+};
+$$('.ed-pos button').forEach(b => b.onclick = () => {
+  if (!ed.selText) return;
+  const box = ed.texts.find(x => x.id === ed.selText);
+  if (!box) return;
+  const t = textCfg(ed.selText);
+  const c = $('#edCanvas'), W = c.width, H = c.height, m = 0.05;
+  if (b.dataset.v) {
+    const target = b.dataset.v === 'top' ? H * m : b.dataset.v === 'bottom' ? H * (1 - m) - box.h : (H - box.h) / 2;
+    t.dy = (t.dy || 0) + (target - box.y) / H;
+  } else {
+    const target = b.dataset.h === 'right' ? W * (1 - m) - box.w : b.dataset.h === 'left' ? W * m : (W - box.w) / 2;
+    t.dx = (t.dx || 0) + (target - box.x) / W;
+  }
+  edRender();
+});
+$('#edTextReset').onclick = () => {
+  if (!ed.selText || !ed.page.text) return;
+  delete ed.page.text[ed.selText];
+  edUpdatePanel(); edRender();
+};
 
 $('#edZoom').oninput = () => {
   if (ed.sel == null) return;

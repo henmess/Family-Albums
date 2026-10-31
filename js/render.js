@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=6';
+import { templateById, rng } from './layout.js?v=7';
 
 /*
  Theme fields
@@ -220,6 +220,41 @@ function fitFont(ctx, text, weight, family, size, maxW) {
   return s;
 }
 
+// ---------- movable / resizable text groups ----------
+// page.text[id] = { dx, dy (fractions of the page), scale, top (frozen auto placement) }
+let textCollector = null;
+
+function textGroup(ctx, g, id, ax, ay, draw) {
+  const t = g.page.text?.[id] || {};
+  const dx = (t.dx || 0) * g.PW, dy = (t.dy || 0) * g.PH, s = t.scale || 1;
+  const boxes = [];
+  const prev = textCollector;
+  textCollector = boxes;
+  ctx.save();
+  ctx.translate(ax + dx, ay + dy); ctx.scale(s, s); ctx.translate(-ax, -ay);
+  try { draw(); } finally { ctx.restore(); textCollector = prev; }
+  if (!boxes.length) return;
+  const x1 = Math.min(...boxes.map(b => b.x)), y1 = Math.min(...boxes.map(b => b.y));
+  const x2 = Math.max(...boxes.map(b => b.x + b.w)), y2 = Math.max(...boxes.map(b => b.y + b.h));
+  const tx = v => ax + dx + (v - ax) * s, ty = v => ay + dy + (v - ay) * s;
+  const pad = 1.2 * g.k;
+  g.texts.push({ id, x: tx(x1) - pad, y: ty(y1) - pad, w: (x2 - x1) * s + 2 * pad, h: (y2 - y1) * s + 2 * pad, top: g.autoTop?.[id] });
+}
+
+// where is the subject of a full-page photo (0 = top, 1 = bottom)?
+function subjectY(page, g) {
+  const crop = g.cropOf(0);
+  if (crop && crop.y != null) return crop.y;
+  return g.photoOf(page.photos[0])?.focal?.y ?? 0.45;
+}
+// decide (once) whether a text sits at the top; respects a placement frozen by the user
+function placeTop(page, g, id, autoTop) {
+  const t = page.text?.[id];
+  const top = t && t.top != null ? t.top : autoTop;
+  (g.autoTop ||= {})[id] = top;
+  return top;
+}
+
 function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 'center', shadow = false, baseline = 'middle', gold = false }) {
   if (!text) return 0;
   ctx.save();
@@ -227,10 +262,11 @@ function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
   const s = fitFont(ctx, text, weight, family, size, maxW);
+  const tw = ctx.measureText(text).width;
+  const x0 = align === 'center' ? x - tw / 2 : align === 'right' ? x - tw : x;
+  if (textCollector) textCollector.push({ x: x0, y: y - s * 0.62, w: tw, h: s * 1.24 });
   if (gold) {
-    const w = ctx.measureText(text).width;
-    const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
-    ctx.fillStyle = goldGradient(ctx, x0, y - s / 2, w, s);
+    ctx.fillStyle = goldGradient(ctx, x0, y - s / 2, tw, s);
   } else ctx.fillStyle = color;
   if (shadow) { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = s * 0.35; ctx.shadowOffsetY = s * 0.05; }
   ctx.fillText(text, x, y);
@@ -607,7 +643,8 @@ export async function renderPage(canvas, page, env) {
   const PW = format.w * k, PH = format.h * k;
   const M = theme.margin * k;
   const fam = theme.font;
-  const g = { W, H, B, PW, PH, M, k, r, colors };
+  const texts = [];
+  const g = { W, H, B, PW, PH, M, k, r, colors, page, texts };
   const slots = [];
 
   drawBackground(ctx, W, H, colors, theme, k, r, env, page);
@@ -622,7 +659,7 @@ export async function renderPage(canvas, page, env) {
 
   if (page.type === 'photos') {
     const tpl = templateById(page.template);
-    if (!tpl) return { slots };
+    if (!tpl) return { slots, texts };
     const gap = theme.gap * k;
     if (tpl.full) {
       const p = photoOf(page.photos[0]);
@@ -649,12 +686,17 @@ export async function renderPage(canvas, page, env) {
       });
     }
     drawOverlayDeco(ctx, theme, colors, g, r, page);
-    if (page.label && theme.labels && !tpl.full) label(ctx, page.label, theme, colors, g);
+    if (page.label && (theme.labels || page.text?.label) && !tpl.full) {
+      textGroup(ctx, g, 'label', B + PW - M, B + M * 0.5, () => label(ctx, page.label, theme, colors, g));
+    }
     if (page.caption) {
-      drawText(ctx, page.caption, B + PW / 2, B + PH - M * 0.45, {
-        size: Math.min(5.5 * k, M * 0.42), weight: theme.bodyWeight, family: fam, maxW: PW - 2 * M,
+      // on a full-page photo keep the caption away from the subject
+      const top = tpl.full ? placeTop(page, g, 'caption', subjectY(page, g) > 0.62) : false;
+      const cy = top ? B + Math.max(M * 0.9, 9 * k) : B + PH - Math.max(M * 0.45, tpl.full ? 9 * k : 0);
+      textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawText(ctx, page.caption, B + PW / 2, cy, {
+        size: Math.max(tpl.full ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: fam, maxW: PW - 2 * M,
         color: tpl.full ? '#fff' : colors.text, shadow: tpl.full, gold: theme.goldText && !tpl.full,
-      });
+      }));
     }
     if (theme.deco.includes('bars') && !tpl.full) {
       ctx.fillStyle = colors.accent;
@@ -673,7 +715,7 @@ export async function renderPage(canvas, page, env) {
   } else if (page.type === 'end') {
     renderEnd(ctx, page, env, theme, g);
   }
-  return { slots };
+  return { slots, texts };
 }
 
 // a framed hero photo with title underneath (used by most covers/chapters)
@@ -695,14 +737,16 @@ async function framedHero(ctx, page, theme, g, { title, sub, titleScale = 1, top
   const rest = PH - (by - B) - bh;
   const ty = by + bh + rest * 0.4;
   const big = polaroid || theme.font === 'Amatic SC' || theme.font === 'Karantina';
-  const ts = drawText(ctx, title, B + PW / 2, ty, { size: PH * (big ? 0.11 : 0.075) * titleScale, weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85, gold: theme.goldText });
-  if (sub) drawText(ctx, sub, B + PW / 2, ty + ts * 0.62 + PH * 0.035, { size: PH * (big ? 0.05 : 0.038), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
-  else if (title) {
-    const oy = ty + ts * 0.62 + PH * 0.02;
-    ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 10 * k, oy, 20 * k, 1) : colors.accent;
-    ctx.fillRect(B + PW / 2 - 10 * k, oy, 20 * k, 0.4 * k);
-    ctx.beginPath(); ctx.arc(B + PW / 2, oy + 0.2 * k, 1.1 * k, 0, Math.PI * 2); ctx.fill();
-  }
+  textGroup(ctx, g, 'title', B + PW / 2, ty, () => {
+    const ts = drawText(ctx, title, B + PW / 2, ty, { size: PH * (big ? 0.11 : 0.075) * titleScale, weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85, gold: theme.goldText });
+    if (sub) drawText(ctx, sub, B + PW / 2, ty + ts * 0.62 + PH * 0.035, { size: PH * (big ? 0.05 : 0.038), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
+    else if (title) {
+      const oy = ty + ts * 0.62 + PH * 0.02;
+      ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 10 * k, oy, 20 * k, 1) : colors.accent;
+      ctx.fillRect(B + PW / 2 - 10 * k, oy, 20 * k, 0.4 * k);
+      ctx.beginPath(); ctx.arc(B + PW / 2, oy + 0.2 * k, 1.1 * k, 0, Math.PI * 2); ctx.fill();
+    }
+  });
 }
 
 async function fullBleedHero(ctx, page, theme, g) {
@@ -724,24 +768,37 @@ async function renderCover(ctx, page, env, theme, g) {
     return;
   }
   await fullBleedHero(ctx, page, theme, g);
+  const sy = subjectY(page, g);
+  const shade = top => {
+    const gr = top ? ctx.createLinearGradient(0, 0, 0, H * 0.5) : ctx.createLinearGradient(0, H, 0, H * 0.45);
+    gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr;
+    if (top) ctx.fillRect(0, 0, W, H * 0.5); else ctx.fillRect(0, H * 0.45, W, H * 0.55);
+  };
   if (theme.cover === 'magazine') {
-    const gr = ctx.createLinearGradient(0, 0, 0, H * 0.45);
-    gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H * 0.45);
-    drawText(ctx, title, B + PW - M, B + M + PH * 0.08, { size: PH * 0.16, weight: 900, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
-    ctx.fillStyle = colors.accent;
-    ctx.fillRect(B + PW - M - 30 * k, B + M + PH * 0.16, 30 * k, 2.2 * k);
-    drawText(ctx, sub, B + PW - M, B + M + PH * 0.21, { size: PH * 0.045, weight: 700, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
+    // magazine title lives at the top unless the subject is there
+    const top = placeTop(page, g, 'title', sy >= 0.4);
+    shade(top);
+    const y0 = top ? B + M + PH * 0.08 : B + PH - M - PH * 0.2;
+    textGroup(ctx, g, 'title', B + PW - M, y0, () => {
+      drawText(ctx, title, B + PW - M, y0, { size: PH * 0.16, weight: 900, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(B + PW - M - 30 * k, y0 + PH * 0.08, 30 * k, 2.2 * k);
+      drawText(ctx, sub, B + PW - M, y0 + PH * 0.13, { size: PH * 0.045, weight: 700, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
+    });
     return;
   }
-  const gr = ctx.createLinearGradient(0, H * 0.45, 0, H);
-  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.78)');
-  ctx.fillStyle = gr; ctx.fillRect(0, H * 0.45, W, H * 0.55);
+  // bottom title, moved to the top when the subject is low in the photo
+  const top = placeTop(page, g, 'title', sy > 0.58);
+  shade(top);
   const big = theme.font === 'Karantina';
-  drawText(ctx, title, B + PW - M * 1.5, B + PH - M * 1.5 - PH * 0.09, { size: PH * (big ? 0.16 : 0.1), weight: 700, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right' });
-  ctx.fillStyle = colors.accent;
-  ctx.fillRect(B + PW - M * 1.5 - 18 * k, B + PH - M * 1.5 - PH * 0.025, 18 * k, 0.9 * k);
-  drawText(ctx, sub, B + PW - M * 1.5, B + PH - M * 1.5 + PH * 0.005, { size: PH * (big ? 0.06 : 0.04), weight: 300, family: fam, color: '#f0f0f0', maxW: PW - 3 * M, align: 'right' });
+  const y0 = top ? B + M * 1.5 + PH * 0.08 : B + PH - M * 1.5 - PH * 0.09;
+  textGroup(ctx, g, 'title', B + PW - M * 1.5, y0, () => {
+    drawText(ctx, title, B + PW - M * 1.5, y0, { size: PH * (big ? 0.16 : 0.1), weight: 700, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right', shadow: true });
+    ctx.fillStyle = colors.accent;
+    ctx.fillRect(B + PW - M * 1.5 - 18 * k, y0 + PH * 0.065, 18 * k, 0.9 * k);
+    drawText(ctx, sub, B + PW - M * 1.5, y0 + PH * 0.095, { size: PH * (big ? 0.06 : 0.04), weight: 300, family: fam, color: '#f0f0f0', maxW: PW - 3 * M, align: 'right', shadow: true });
+  });
 }
 
 async function renderChapter(ctx, page, env, theme, g) {
@@ -751,13 +808,23 @@ async function renderChapter(ctx, page, env, theme, g) {
     await fullBleedHero(ctx, page, theme, g);
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.fillRect(0, 0, W, H);
-    if (theme.deco.includes('bars')) {
-      ctx.fillStyle = colors.accent;
-      ctx.fillRect(B + PW / 2 - 15 * k, B + PH / 2 - PH * 0.13, 30 * k, 2 * k);
-    }
+    // centered title, unless the subject is in the middle – then above/below it
+    const sy = subjectY(page, g);
+    const centerBusy = Math.abs(sy - 0.5) < 0.22;
+    const autoPos = centerBusy ? (sy < 0.5 ? 'bottom' : 'top') : 'center';
+    const t = page.text?.title;
+    const pos = t && t.top != null ? (t.top === true ? 'top' : t.top === false ? 'bottom' : t.top) : autoPos;
+    (g.autoTop ||= {}).title = pos;
+    const cy = B + PH * (pos === 'top' ? 0.24 : pos === 'bottom' ? 0.76 : 0.5);
     const big = theme.font === 'Karantina';
-    drawText(ctx, page.title || '', B + PW / 2, B + PH / 2, { size: PH * (big ? 0.17 : 0.11), weight: theme.titleWeight, family: fam, color: '#fff', maxW: PW * 0.85, shadow: true });
-    drawText(ctx, page.subtitle || '', B + PW / 2, B + PH / 2 + PH * 0.1, { size: PH * 0.045, weight: theme.bodyWeight, family: fam, color: '#fff', maxW: PW * 0.8, shadow: true });
+    textGroup(ctx, g, 'title', B + PW / 2, cy, () => {
+      if (theme.deco.includes('bars')) {
+        ctx.fillStyle = colors.accent;
+        ctx.fillRect(B + PW / 2 - 15 * k, cy - PH * 0.13, 30 * k, 2 * k);
+      }
+      drawText(ctx, page.title || '', B + PW / 2, cy, { size: PH * (big ? 0.17 : 0.11), weight: theme.titleWeight, family: fam, color: '#fff', maxW: PW * 0.85, shadow: true });
+      drawText(ctx, page.subtitle || '', B + PW / 2, cy + PH * 0.1, { size: PH * 0.045, weight: theme.bodyWeight, family: fam, color: '#fff', maxW: PW * 0.8, shadow: true });
+    });
     return;
   }
   await framedHero(ctx, page, theme, g, { title: page.title || '', sub: page.subtitle || '' });
@@ -771,10 +838,12 @@ function renderEnd(ctx, page, env, theme, g) {
   const text = page.title || (page.quote ? 'הרגעים הקטנים הם הגדולים באמת' : 'נוצר באהבה');
   const sub = page.subtitle ?? (page.quote ? '' : (album.yearRange || ''));
   const big = theme.frame === 'polaroid' || theme.font === 'Amatic SC' || theme.font === 'Karantina';
-  drawText(ctx, text, B + PW / 2, B + PH * 0.47, { size: PH * (big ? 0.09 : 0.06), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.8, gold: theme.goldText });
-  ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 2 * k, B + PH * 0.54, 4 * k, 4 * k) : colors.accent;
-  ctx.beginPath(); ctx.arc(B + PW / 2, B + PH * 0.54, 1.3 * k, 0, Math.PI * 2); ctx.fill();
-  drawText(ctx, sub, B + PW / 2, B + PH * 0.6, { size: PH * 0.035, weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
+  textGroup(ctx, g, 'title', B + PW / 2, B + PH * 0.47, () => {
+    drawText(ctx, text, B + PW / 2, B + PH * 0.47, { size: PH * (big ? 0.09 : 0.06), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.8, gold: theme.goldText });
+    ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 2 * k, B + PH * 0.54, 4 * k, 4 * k) : colors.accent;
+    ctx.beginPath(); ctx.arc(B + PW / 2, B + PH * 0.54, 1.3 * k, 0, Math.PI * 2); ctx.fill();
+    drawText(ctx, sub, B + PW / 2, B + PH * 0.6, { size: PH * 0.035, weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
+  });
 }
 
 // small schematic of a template (for the layout picker)
