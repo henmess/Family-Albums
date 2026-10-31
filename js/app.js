@@ -1,7 +1,7 @@
-import * as db from './db.js?v=3';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=3';
-import { generateAlbum, rerollPage, templateById } from './layout.js?v=3';
-import { THEMES, renderPage, ensureFonts } from './render.js?v=3';
+import * as db from './db.js?v=4';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=4';
+import { generateAlbum, rerollPage, templateById } from './layout.js?v=4';
+import { THEMES, renderPage, ensureFonts } from './render.js?v=4';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -221,11 +221,48 @@ function showTab(tab) {
 
 // ---------------- photos tab ----------------
 const fileInput = $('#fileInput');
+const folderInput = $('#folderInput');
 fileInput.onchange = () => { addFiles([...fileInput.files]); fileInput.value = ''; };
+folderInput.onchange = () => { addFiles([...folderInput.files]); folderInput.value = ''; };
+$('#pickFilesBtn').onclick = e => { e.stopPropagation(); fileInput.click(); };
+$('#pickFolderBtn').onclick = e => { e.stopPropagation(); folderInput.click(); };
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = /Android/i.test(navigator.userAgent);
+// phones can't pick folders from the gallery – show how to pick a whole album instead
+if (isIOS || isAndroid || !('webkitdirectory' in folderInput)) $('#pickFolderBtn').classList.add('hidden');
+if (isIOS || isAndroid) $('#dropzone .dz-title').textContent = 'העלאת תמונות מהגלריה';
+if (isIOS) $('#iosTip').classList.remove('hidden');
+if (isAndroid) $('#androidTip').classList.remove('hidden');
+
 const dz = $('#dropzone');
+dz.addEventListener('click', e => { if (!e.target.closest('button')) fileInput.click(); });
 ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('over'); }));
-dz.addEventListener('drop', e => addFiles([...e.dataTransfer.files]));
+dz.addEventListener('drop', async e => {
+  const entries = [...(e.dataTransfer.items || [])].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (entries.some(en => en.isDirectory)) addFiles(await filesFromEntries(entries));
+  else addFiles([...e.dataTransfer.files]);
+});
+
+// read dropped folders (including sub-folders)
+async function filesFromEntries(entries) {
+  const out = [];
+  const walk = async en => {
+    if (en.isFile) {
+      out.push(await new Promise((res, rej) => en.file(res, rej)).catch(() => null));
+    } else if (en.isDirectory) {
+      const reader = en.createReader();
+      let batch;
+      do {
+        batch = await new Promise(res => reader.readEntries(res, () => res([])));
+        for (const c of batch) await walk(c);
+      } while (batch.length);
+    }
+  };
+  for (const en of entries) await walk(en);
+  return out.filter(Boolean);
+}
 
 async function addFiles(files) {
   files = files.filter(f => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
@@ -295,18 +332,37 @@ function renderPhotos() {
 
   const grid = $('#photoGrid');
   grid.innerHTML = '';
-  const filtered = photos.filter(p => {
-    if (state.filter === 'in') return isIncluded(p);
-    if (state.filter === 'dup') return p.dupGroup;
-    if (state.filter === 'weak') return p.weak;
-    return true;
-  });
+  const filtered = visiblePhotos();
+  $('#bulkRow').classList.toggle('hidden', !has);
+  $('#bulkScope').textContent = { all: '', in: ' (בתצוגה הנוכחית)', dup: ' לתמונות הדומות', weak: ' לתמונות החלשות' }[state.filter] || '';
+  // day headers (only when showing photos in date order)
+  const byDay = state.filter !== 'dup' && filtered.length > 0;
+  const days = new Map();
+  if (byDay) for (const p of filtered) {
+    const k = new Date(p.date).toDateString();
+    if (!days.has(k)) days.set(k, []);
+    days.get(k).push(p);
+  }
+  let lastDay = null;
   if (state.filter === 'dup') filtered.sort((a, b) => String(a.dupGroup).localeCompare(String(b.dupGroup)) || (a.duplicate - b.duplicate) || b.quality.score - a.quality.score);
 
   const groupColors = new Map();
   const palette = ['#e76f51', '#2a9d8f', '#8e44ad', '#e9c46a', '#3a86ff', '#ff006e', '#06d6a0', '#8338ec'];
   for (const p of filtered) {
     if (p.dupGroup && !groupColors.has(p.dupGroup)) groupColors.set(p.dupGroup, palette[groupColors.size % palette.length]);
+    const dayKey = new Date(p.date).toDateString();
+    if (byDay && days.size > 1 && dayKey !== lastDay) {
+      lastDay = dayKey;
+      const list = days.get(dayKey);
+      const allIn = list.every(isIncluded);
+      const h = document.createElement('div');
+      h.className = 'day-head';
+      h.innerHTML = `<span class="day-name">${dayFmt.format(new Date(p.date))}</span>
+        <span class="day-count">${list.filter(isIncluded).length} מתוך ${list.length} נבחרו</span>
+        <button class="chip small">${allIn ? '✕ בטל את כל היום' : '✓ סמן את כל היום'}</button>`;
+      h.querySelector('button').onclick = () => bulkSelect(list, allIn ? 'none' : 'all');
+      grid.appendChild(h);
+    }
     const el = document.createElement('div');
     const included = isIncluded(p);
     el.className = 'photo' + (included ? ' in' : ' out');
@@ -351,6 +407,40 @@ function renderPhotos() {
     grid.appendChild(el);
   }
 }
+
+const autoIncluded = p => !p.duplicate && !p.weak;
+
+// mode: 'all' | 'none' | 'auto'
+async function bulkSelect(list, mode) {
+  for (const p of list) {
+    if (mode === 'all') p.manual = autoIncluded(p) ? null : 'in';
+    else if (mode === 'none') p.manual = autoIncluded(p) ? 'out' : null;
+    else p.manual = null;
+  }
+  await db.updatePhotos(list);
+  markChanged();
+  renderPhotos();
+}
+
+function visiblePhotos() {
+  const photos = [...state.photos].sort((a, b) => a.date - b.date);
+  return photos.filter(p => {
+    if (state.filter === 'in') return isIncluded(p);
+    if (state.filter === 'dup') return p.dupGroup;
+    if (state.filter === 'weak') return p.weak;
+    return true;
+  });
+}
+
+$$('#bulkRow [data-bulk]').forEach(b => b.onclick = async () => {
+  const list = visiblePhotos();
+  const before = state.photos.filter(isIncluded).length;
+  await bulkSelect(list, b.dataset.bulk);
+  const after = state.photos.filter(isIncluded).length;
+  toast(`${after} תמונות נבחרו לאלבום (${after - before >= 0 ? '+' : ''}${after - before})`);
+});
+
+const dayFmt = new Intl.DateTimeFormat('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
 function markChanged() {
   if (state.album.pages) state.album.needsRedesign = true;

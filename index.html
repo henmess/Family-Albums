@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Rubik:wght@300;400;500;700&family=Secular+One&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=3">
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
   <header class="topbar">
@@ -44,12 +44,21 @@
 
       <!-- Photos tab -->
       <div id="photosTab" class="tab-panel">
-        <label class="dropzone" id="dropzone">
+        <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" accept="image/*" multiple hidden>
+          <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
           <div class="dz-icon">🖼️</div>
-          <div class="dz-title">גררו לכאן תמונות או לחצו לבחירה</div>
+          <div class="dz-title">גררו לכאן תמונות או תיקייה שלמה</div>
+          <div class="dz-buttons">
+            <button class="btn primary" id="pickFilesBtn">בחירת תמונות</button>
+            <button class="btn ghost" id="pickFolderBtn">📁 העלאת תיקייה / אלבום שלם</button>
+          </div>
           <div class="dz-sub">אפשר להעלות מאות תמונות בבת אחת. המערכת תזהה כפילויות ותבחר את הטובות ביותר.</div>
-        </label>
+          <div class="dz-tip hidden" id="iosTip">💡 באייפון: בחלון שנפתח עברו ללשונית <b>"אוספים"</b> או <b>"אלבומים"</b>, פתחו את האלבום הרצוי
+            והחליקו אצבע על התמונות כדי לסמן הרבה בבת אחת.</div>
+          <div class="dz-tip hidden" id="androidTip">💡 באנדרואיד: בחלון שנפתח עברו ל<b>"אלבומים"</b>, פתחו את האלבום הרצוי,
+            לחצו לחיצה ארוכה על תמונה ראשונה והחליקו כדי לסמן הרבה בבת אחת.</div>
+        </div>
         <div id="progress" class="progress hidden"><div class="bar"></div><span class="label"></span></div>
 
         <div id="photoStats" class="stats hidden"></div>
@@ -67,6 +76,12 @@
           <button class="chip" data-filter="dup">תמונות דומות</button>
           <button class="chip" data-filter="weak">חלשות</button>
           <span class="hint">לחיצה על תמונה מכניסה/מוציאה אותה מהאלבום</span>
+        </div>
+        <div class="bulk hidden" id="bulkRow">
+          <span>בחירה מהירה<span id="bulkScope"></span>:</span>
+          <button class="chip" data-bulk="all">✓ סמן הכול</button>
+          <button class="chip" data-bulk="none">✕ בטל הכול</button>
+          <button class="chip" data-bulk="auto">↺ בחירה אוטומטית</button>
         </div>
         <div id="photoGrid" class="photo-grid"></div>
         <div class="next-row hidden" id="toDesignRow">
@@ -142,7 +157,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=3"></script>
+  <script type="module" src="js/app.js?v=4"></script>
   <script>
     // if the app didn't start (e.g. an old cached file after an update), offer a refresh
     setTimeout(function () {

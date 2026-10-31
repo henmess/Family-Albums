@@ -115,6 +115,17 @@ export async function updatePhoto(photo) {
   const rec = await packPhoto(photo);
   return promisify((await store('photos', 'readwrite')).put(rec));
 }
+export async function updatePhotos(photos) {
+  const recs = await Promise.all(photos.map(packPhoto));
+  const db = await openDB();
+  const tx = db.transaction('photos', 'readwrite');
+  const st = tx.objectStore('photos');
+  recs.forEach(r => st.put(r));
+  return new Promise((res, rej) => {
+    tx.oncomplete = () => res();
+    tx.onerror = () => rej(tx.error);
+  });
+}
 export async function getOriginal(id) {
   const r = await promisify((await store('originals')).get(id));
   return r ? unpackBlob(r.blob) : null;

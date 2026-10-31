@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails) and for the print PDF (full resolution).
-import { templateById, rng } from './layout.js?v=3';
+import { templateById, rng } from './layout.js?v=4';
 
 export const THEMES = {
   classic: {
