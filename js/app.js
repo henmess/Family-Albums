@@ -1,7 +1,7 @@
-import * as db from './db.js?v=8';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=8';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=8';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=8';
+import * as db from './db.js?v=9';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=9';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=9';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=9';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -998,6 +998,9 @@ function edUpdatePanel() {
   if (hasSel) {
     const pid = pg.photos[ed.sel];
     $('#edZoom').value = pg.crops?.[pid]?.zoom || 1;
+    $('#edPhotoCaption').value = pg.captions?.[pid] || '';
+    $('#edPhotoCaption').classList.toggle('hidden', !isPhotos);
+    $('#edPhotoCaption').previousElementSibling.classList.toggle('hidden', !isPhotos);
     const shape = pg.shapes?.[ed.sel] || '';
     $$('#edShape button').forEach(b => b.classList.toggle('active', b.dataset.v === shape));
   }
@@ -1066,6 +1069,23 @@ function edUpdatePanel() {
     field('כותרת', ed.album.title, v => ed.album.title = v);
     field('כותרת משנה', ed.album.subtitle, v => ed.album.subtitle = v);
   } else if (pg.type === 'photos') {
+    // a page title can be added to any photo page
+    const selectTitle = before => {
+      if (before || !(pg.title || pg.subtitle)) return;
+      // a new title was just added – select it so it can be moved/resized right away
+      ed.selText = 'title'; ed.sel = null;
+      $('#edSlot').classList.add('hidden');
+      $('#edTextSel').classList.remove('hidden');
+      $('#edTextSize').value = pg.text?.title?.scale || 1;
+      $('#edTextSizeLbl').textContent = Math.round((pg.text?.title?.scale || 1) * 100) + '%';
+    };
+    field('כותרת לעמוד', pg.title, v => { const had = pg.title || pg.subtitle; pg.title = v; selectTitle(had); }, 'למשל: החתונה של דנה');
+    field('שורה נוספת מתחת לכותרת', pg.subtitle, v => { const had = pg.title || pg.subtitle; pg.subtitle = v; selectTitle(had); }, 'למשל: אוגוסט 2025');
+    const chk = document.createElement('label');
+    chk.className = 'check';
+    chk.innerHTML = `<input type="checkbox" ${pg.titleBox === false ? '' : 'checked'}> רקע מאחורי הכותרת (קריא גם מעל תמונות)`;
+    chk.querySelector('input').onchange = e => { if (e.target.checked) delete pg.titleBox; else pg.titleBox = false; edRender(); };
+    tx.append(chk);
     field('כיתוב בתחתית העמוד', pg.caption, v => pg.caption = v, 'למשל: סבתא וסבא בחתונה');
     if (edTheme().labels) field('תווית בראש העמוד', pg.label, v => pg.label = v, 'למשל: יולי 2025');
   } else {
@@ -1116,6 +1136,15 @@ $('#edPrev').onclick = async () => { await edCommit(); openEditor(ed.index - 1);
 $('#edNext').onclick = async () => { await edCommit(); openEditor(ed.index + 1); };
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#editor').classList.contains('hidden') && $('#picker').classList.contains('hidden')) closeEditor(); });
 window.addEventListener('resize', debounce(() => { if (!$('#editor').classList.contains('hidden')) edRender(); }, 200));
+
+$('#edPhotoCaption').oninput = debounce(() => {
+  if (ed.sel == null) return;
+  const pid = ed.page.photos[ed.sel];
+  const v = $('#edPhotoCaption').value;
+  ed.page.captions ||= {};
+  if (v) ed.page.captions[pid] = v; else delete ed.page.captions[pid];
+  edRender();
+}, 250);
 
 $('#edTextSize').oninput = () => {
   if (!ed.selText) return;

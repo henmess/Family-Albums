@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=8';
+import { templateById, rng } from './layout.js?v=9';
 
 /*
  Theme fields
@@ -594,6 +594,18 @@ function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
       shapePath(ctx, shape, x - o, y - o, w + 2 * o, h + 2 * o, rad ? rad + o : 0); ctx.stroke();
     }
   }
+  if (opts.caption && frame !== 'polaroid') {
+    const inset = opts.captionInset || 0;
+    const fs = Math.max(2.6 * k, Math.min(w, h) * 0.055);
+    const bandH = fs * 2.4;
+    ctx.save();
+    shapePath(ctx, shape, x, y, w, h, opts.full ? 0 : rad); ctx.clip();
+    const gr = ctx.createLinearGradient(0, y + h - bandH - inset, 0, y + h);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = gr; ctx.fillRect(x, y + h - bandH - inset, w, bandH + inset);
+    ctx.restore();
+    drawText(ctx, opts.caption, x + w / 2, y + h - inset - fs * 0.95, { size: fs, weight: theme.bodyWeight, family: theme.font, color: '#fff', maxW: w * 0.9, shadow: true });
+  }
   if (!opts.full && theme.deco.includes('tape') && r() < 0.75) drawTape(ctx, x, y, w, h, k, r, false, colors);
   if (!opts.full && theme.deco.includes('washi') && r() < 0.8) drawTape(ctx, x, y, w, h, k, r, true, colors);
   ctx.restore();
@@ -664,7 +676,7 @@ export async function renderPage(canvas, page, env) {
     if (tpl.full) {
       const p = photoOf(page.photos[0]);
       const img = await load(p, W, H);
-      drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true, crop: cropOf(0), colors });
+      drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true, crop: cropOf(0), colors, caption: page.captions?.[page.photos[0]] || null, captionInset: M + B });
       slots.push({ x: 0, y: 0, w: W, h: H, index: 0 });
     } else {
       const cx = B + M - gap / 2, cy = B + M - gap / 2;
@@ -681,13 +693,18 @@ export async function renderPage(canvas, page, env) {
           else if (theme.archChance && portraitish && r() < theme.archChance) shape = 'arch';
           else if (theme.shapeSolo === 'round') shape = 'round';
         }
-        drawPhoto(ctx, imgs[i], p, box, theme, k, r, { shape, crop: cropOf(i), colors, caption: theme.frame === 'polaroid' ? page.captions?.[i] : null });
+        drawPhoto(ctx, imgs[i], p, box, theme, k, r, { shape, crop: cropOf(i), colors, caption: page.captions?.[page.photos[i]] || null });
         slots.push({ ...box, index: i });
       });
     }
     drawOverlayDeco(ctx, theme, colors, g, r, page);
     if (page.label && (theme.labels || page.text?.label) && !tpl.full) {
       textGroup(ctx, g, 'label', B + PW - M, B + M * 0.5, () => label(ctx, page.label, theme, colors, g));
+    }
+    if (page.title || page.subtitle) {
+      const top = placeTop(page, g, 'title', tpl.full ? subjectY(page, g) > 0.55 : true);
+      const cy = B + PH * (top ? 0.11 : 0.86);
+      textGroup(ctx, g, 'title', B + PW / 2, cy, () => pageTitle(ctx, page, theme, colors, g, cy));
     }
     if (page.caption) {
       // on a full-page photo keep the caption away from the subject
@@ -716,6 +733,42 @@ export async function renderPage(canvas, page, env) {
     renderEnd(ctx, page, env, theme, g);
   }
   return { slots, texts };
+}
+
+// a title on a regular photo page, on a soft panel so it reads over photos too
+function pageTitle(ctx, page, theme, colors, g, cy) {
+  const { B, PW, PH, k } = g;
+  const fam = theme.font;
+  const big = theme.font === 'Amatic SC' || theme.font === 'Karantina';
+  const ts = PH * (big ? 0.085 : 0.06), ss = PH * (big ? 0.042 : 0.03);
+  const hasSub = !!page.subtitle;
+  const boxed = page.titleBox !== false;
+  ctx.save();
+  ctx.direction = 'rtl';
+  const tw = page.title ? (ctx.font = `${theme.titleWeight} ${fitFont(ctx, page.title, theme.titleWeight, fam, ts, PW * 0.8)}px "${fam}"`, ctx.measureText(page.title).width) : 0;
+  const sw = hasSub ? (ctx.font = `${theme.bodyWeight} ${fitFont(ctx, page.subtitle, theme.bodyWeight, fam, ss, PW * 0.8)}px "${fam}"`, ctx.measureText(page.subtitle).width) : 0;
+  ctx.restore();
+  const titleY = hasSub && page.title ? cy - ss * 0.85 : cy;
+  const subY = page.title ? titleY + ts * 0.62 + ss * 0.75 : cy;
+  const dark = colors.dark;
+  if (boxed) {
+    const w = Math.max(tw, sw) + ts * 1.2;
+    const top = (page.title ? titleY - ts * 0.75 : subY - ss * 0.9);
+    const bottom = hasSub ? subY + ss * 0.95 : titleY + ts * 0.7;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = 2 * k; ctx.shadowOffsetY = 0.5 * k;
+    ctx.fillStyle = dark ? 'rgba(15,15,20,0.72)' : toRGBA(colors.bg, 0.9);
+    shapePath(ctx, 'round', B + PW / 2 - w / 2, top, w, bottom - top, Math.min(3 * k, (bottom - top) / 2));
+    ctx.fill();
+    ctx.restore();
+  }
+  const color = boxed ? (dark ? '#fff' : colors.text) : '#fff';
+  if (page.title) drawText(ctx, page.title, B + PW / 2, titleY, { size: ts, weight: theme.titleWeight, family: fam, color, maxW: PW * 0.8, gold: theme.goldText && boxed, shadow: !boxed });
+  if (hasSub) drawText(ctx, page.subtitle, B + PW / 2, subY, { size: ss, weight: theme.bodyWeight, family: fam, color: boxed ? colors.accent : '#fff', maxW: PW * 0.8, gold: theme.goldText && boxed, shadow: !boxed });
+}
+function toRGBA(c, a) {
+  const [r, g2, b] = hex2rgb(toHex(c));
+  return `rgba(${r},${g2},${b},${a})`;
 }
 
 // a framed hero photo with title underneath (used by most covers/chapters)

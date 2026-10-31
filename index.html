@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Bellefair&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Karantina:wght@400;700&family=Rubik:wght@300;400;500;700&family=Secular+One&family=Suez+One&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
   <header class="topbar">
@@ -204,6 +204,8 @@
             </div>
             <label class="lbl">זום</label>
             <div class="range-row"><input type="range" id="edZoom" min="1" max="3" step="0.05"><button class="btn small ghost" id="edResetCrop">איפוס</button></div>
+            <label class="lbl">כיתוב לתמונה</label>
+            <input class="input" id="edPhotoCaption" placeholder="למשל: נועה בת שנה">
             <label class="lbl">צורה</label>
             <div class="seg" id="edShape">
               <button data-v="">אוטומטי</button><button data-v="rect">מלבן</button><button data-v="round">מעוגל</button>
@@ -259,7 +261,7 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=8"></script>
+  <script type="module" src="js/app.js?v=9"></script>
   <script>
     // if the app didn't start (e.g. an old cached file after an update), offer a refresh
     setTimeout(function () {
