@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=19';
+import { templateById, rng } from './layout.js?v=20';
 
 /*
  Theme fields
@@ -822,11 +822,11 @@ export async function renderPage(canvas, page, env) {
     if (page.caption) {
       // on a full-page photo keep the caption away from the subject
       const top = tpl.full ? placeTop(page, g, 'caption', subjectY(page, g) > 0.62) : false;
-      const cy = top ? B + Math.max(M * 0.9, 9 * k) : B + PH - Math.max(M * 0.45, tpl.full ? 9 * k : 0);
-      textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawText(ctx, page.caption, B + PW / 2, cy, {
+      const cy = top ? B + Math.max(M * 0.9, 9 * k) : B + PH - Math.max(M * (theme.bgStyle === 'navygold' ? 0.68 : 0.45), tpl.full ? 9 * k : 0);
+      textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawCaption(ctx, page, theme, colors, g, cy, {
         size: Math.max(tpl.full ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: fam, maxW: PW - 2 * M,
         color: tpl.full ? '#fff' : colors.text, shadow: tpl.full, gold: theme.goldText && !tpl.full,
-      }));
+      }, top));
     }
     if (theme.deco.includes('bars') && !tpl.full && !page.label) { // the label takes this spot when present
       ctx.fillStyle = colors.accent;
@@ -848,13 +848,63 @@ export async function renderPage(canvas, page, env) {
   // a bottom caption on cover / chapter / end pages (photo pages draw their own)
   if (page.type !== 'photos' && page.caption) {
     const overPhoto = (page.type === 'cover' && theme.cover !== 'framed') || (page.type === 'chapter' && theme.fullBleedSolo);
-    const cy = B + PH - Math.max(M * 0.45, overPhoto ? 9 * k : 4 * k);
-    textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawText(ctx, page.caption, B + PW / 2, cy, {
+    const cy = B + PH - Math.max(M * (theme.bgStyle === 'navygold' ? 0.68 : 0.45), overPhoto ? 9 * k : 4 * k);
+    textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawCaption(ctx, page, theme, colors, g, cy, {
       size: Math.max(overPhoto ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: theme.font, maxW: PW - 2 * M,
       color: overPhoto ? '#fff' : colors.text, shadow: overPhoto, outline: overPhoto ? 'rgba(0,0,0,0.5)' : null, gold: theme.goldText && !overPhoto,
     }));
   }
   return { slots, texts };
+}
+
+// bottom caption: plain text, or a row of bullet points ("a, b, c" -> • a  • b  • c)
+function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
+  if (!page.captionBullets) { drawText(ctx, page.caption, g.B + g.PW / 2, cy, opt); return; }
+  const items = page.caption.split(/[,،\n•·|]+/).map(t => t.trim()).filter(Boolean);
+  if (!items.length) return;
+  const { k } = g;
+  const overPhoto = !!opt.shadow;
+  // keep a multi-line list inside the bottom margin by shrinking it if needed
+  const avail = g.M * 0.85;
+  let size = opt.size, widths, rows, dot, dotGap, itemGap;
+  for (let tries = 0; tries < 8; tries++) {
+    ctx.save();
+    ctx.direction = 'rtl';
+    ctx.font = `${opt.weight} ${size}px "${opt.family}"`;
+    dot = size * 0.17; dotGap = size * 0.45; itemGap = size * 1.3;
+    widths = items.map(t => Math.min(ctx.measureText(t).width, opt.maxW * 0.9) + dot * 2 + dotGap);
+    ctx.restore();
+    rows = [];
+    let row = [], rw = 0;
+    items.forEach((t, i) => {
+      const w = widths[i];
+      if (row.length && rw + itemGap + w > opt.maxW) { rows.push({ row, rw }); row = []; rw = 0; }
+      rw += (row.length ? itemGap : 0) + w;
+      row.push(i);
+    });
+    if (row.length) rows.push({ row, rw });
+    if (overPhoto || rows.length === 1 || rows.length * size * 1.45 <= avail || size < 2.4 * k) break;
+    size *= 0.88;
+  }
+  opt = { ...opt, size };
+  const lineH = size * 1.45;
+  // the last row sits on cy (rows grow upward), or the first row when the caption is at the top
+  const y0 = growDown ? cy : overPhoto ? cy - (rows.length - 1) * lineH : cy - (rows.length - 1) * lineH / 2;
+  rows.forEach(({ row, rw }, ri) => {
+    const y = y0 + ri * lineH;
+    let x = g.B + g.PW / 2 + rw / 2; // right edge of the row (RTL)
+    for (const i of row) {
+      const w = widths[i];
+      // the bullet, right of the text
+      ctx.save();
+      ctx.fillStyle = opt.color === '#fff' ? '#fff' : (theme.goldText ? goldGradient(ctx, x - dot * 2, y - dot, dot * 2, dot * 2) : colors.accent);
+      if (opt.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = size * 0.3; }
+      ctx.beginPath(); ctx.arc(x - dot, y + size * 0.02, dot, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      drawText(ctx, items[i], x - dot * 2 - dotGap, y, { ...opt, align: 'right', maxW: opt.maxW * 0.9 });
+      x -= w + itemGap;
+    }
+  });
 }
 
 // a title on a regular photo page, on a soft panel so it reads over photos too
@@ -1033,7 +1083,8 @@ async function framedHero(ctx, page, theme, g, { title, sub, sub2 = '', titleSca
   slots.push({ x: bx, y: by, w: bw, h: bh, index: 0 });
   drawOverlayDeco(ctx, theme, colors, g, r, page);
   const rest = PH - (by - B) - bh;
-  const ty = by + bh + rest * (sub2 ? 0.3 : 0.4);
+  // leave room at the bottom when the page also has a caption
+  const ty = by + bh + rest * ((sub2 ? 0.3 : 0.4) - (page.caption ? (sub2 ? 0.1 : 0.07) : 0));
   const big = polaroid || theme.font === 'Amatic SC' || theme.font === 'Karantina';
   textGroup(ctx, g, 'title', B + PW / 2, ty, () => {
     const ts = drawText(ctx, title, B + PW / 2, ty, { size: PH * (big ? 0.11 : 0.075) * titleScale, weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85, gold: theme.goldText });

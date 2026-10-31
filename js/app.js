@@ -1,7 +1,7 @@
-import * as db from './db.js?v=19';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=19';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=19';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=19';
+import * as db from './db.js?v=20';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=20';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=20';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=20';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1336,6 +1336,13 @@ function edUpdatePanel() {
     const i = document.createElement('input'); i.className = 'input'; i.value = value || ''; i.placeholder = ph;
     i.oninput = debounce(() => { set(i.value); edRender(); }, 250);
     tx.append(l, i);
+    if (label === 'כיתוב בתחתית העמוד') {
+      const b = document.createElement('label');
+      b.className = 'check';
+      b.innerHTML = `<input type="checkbox" ${pg.captionBullets ? 'checked' : ''}> הצגה כבולטים – מפרידים בפסיק (למשל: מפלי טראון, פלאכאו)`;
+      b.querySelector('input').onchange = e => { if (e.target.checked) pg.captionBullets = true; else delete pg.captionBullets; edRender(); };
+      tx.append(b);
+    }
   };
   tx.innerHTML = '';
   if (pg.type === 'cover') {
