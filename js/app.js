@@ -1,7 +1,7 @@
-import * as db from './db.js?v=18';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=18';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=18';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=18';
+import * as db from './db.js?v=19';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=19';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=19';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=19';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1342,6 +1342,7 @@ function edUpdatePanel() {
     field('כותרת', ed.album.title, v => ed.album.title = v);
     field('כותרת משנה', ed.album.subtitle, v => ed.album.subtitle = v);
     field('שורה שלישית', ed.album.subtitle2, v => ed.album.subtitle2 = v, 'למשל: נועה, איתי ותמר');
+    field('כיתוב בתחתית העמוד', pg.caption, v => pg.caption = v, 'למשל: באהבה, סבא וסבתא');
   } else if (pg.type === 'photos') {
     // a page title can be added to any photo page
     const selectTitle = before => {
@@ -1371,6 +1372,7 @@ function edUpdatePanel() {
   } else {
     field('כותרת', pg.title, v => pg.title = v);
     field('שורה נוספת', pg.subtitle, v => pg.subtitle = v, pg.type === 'chapter' ? 'למשל: הטיול לצפון' : '');
+    field('כיתוב בתחתית העמוד', pg.caption, v => pg.caption = v, 'למשל: הרגע שבו הכל התחיל');
   }
 }
 

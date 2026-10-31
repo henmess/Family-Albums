@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=18';
+import { templateById, rng } from './layout.js?v=19';
 
 /*
  Theme fields
@@ -844,6 +844,15 @@ export async function renderPage(canvas, page, env) {
     await renderChapter(ctx, page, env, theme, g);
   } else if (page.type === 'end') {
     renderEnd(ctx, page, env, theme, g);
+  }
+  // a bottom caption on cover / chapter / end pages (photo pages draw their own)
+  if (page.type !== 'photos' && page.caption) {
+    const overPhoto = (page.type === 'cover' && theme.cover !== 'framed') || (page.type === 'chapter' && theme.fullBleedSolo);
+    const cy = B + PH - Math.max(M * 0.45, overPhoto ? 9 * k : 4 * k);
+    textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawText(ctx, page.caption, B + PW / 2, cy, {
+      size: Math.max(overPhoto ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: theme.font, maxW: PW - 2 * M,
+      color: overPhoto ? '#fff' : colors.text, shadow: overPhoto, outline: overPhoto ? 'rgba(0,0,0,0.5)' : null, gold: theme.goldText && !overPhoto,
+    }));
   }
   return { slots, texts };
 }
