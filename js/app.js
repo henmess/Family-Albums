@@ -1,7 +1,7 @@
-import * as db from './db.js?v=12';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=12';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=12';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=12';
+import * as db from './db.js?v=13';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=13';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=13';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=13';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -547,6 +547,7 @@ async function openDesign() {
   const a = state.album;
   $('#titleInput').value = a.title || '';
   $('#subtitleInput').value = a.subtitle || '';
+  $('#subtitle2Input').value = a.subtitle2 || '';
   $('#formatSelect').innerHTML = Object.entries(FORMATS).map(([k, f]) => `<option value="${k}" ${k === a.format ? 'selected' : ''}>${f.name}</option>`).join('');
   $$('#densitySeg button').forEach(b => b.classList.toggle('active', b.dataset.v === a.density));
   $$('#dpiSeg button').forEach(b => b.classList.toggle('active', +b.dataset.v === state.dpi));
@@ -619,6 +620,7 @@ async function renderThemePicker() {
 
 $('#titleInput').oninput = debounce(async () => { state.album.title = $('#titleInput').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
 $('#subtitleInput').oninput = debounce(async () => { state.album.subtitle = $('#subtitleInput').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
+$('#subtitle2Input').oninput = debounce(async () => { state.album.subtitle2 = $('#subtitle2Input').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
 $('#formatSelect').onchange = async e => { state.album.format = e.target.value; await regenerate(false); renderPages(); renderThemePicker(); };
 $$('#densitySeg button').forEach(b => b.onclick = async () => {
   state.album.density = b.dataset.v;
@@ -1299,6 +1301,7 @@ function edUpdatePanel() {
   if (pg.type === 'cover') {
     field('כותרת', ed.album.title, v => ed.album.title = v);
     field('כותרת משנה', ed.album.subtitle, v => ed.album.subtitle = v);
+    field('שורה שלישית', ed.album.subtitle2, v => ed.album.subtitle2 = v, 'למשל: נועה, איתי ותמר');
   } else if (pg.type === 'photos') {
     // a page title can be added to any photo page
     const selectTitle = before => {
@@ -1352,12 +1355,12 @@ async function openEditor(i) {
 async function edCommit() {
   const a = state.album;
   a.pages[ed.index] = ed.page;
-  const coverChanged = ed.page.type === 'cover' && (a.title !== ed.album.title || a.subtitle !== ed.album.subtitle);
-  a.title = ed.album.title; a.subtitle = ed.album.subtitle;
+  const coverChanged = ed.page.type === 'cover' && (a.title !== ed.album.title || a.subtitle !== ed.album.subtitle || a.subtitle2 !== ed.album.subtitle2);
+  a.title = ed.album.title; a.subtitle = ed.album.subtitle; a.subtitle2 = ed.album.subtitle2;
   await db.saveAlbum(a);
   rerenderPage(ed.index);
   if (coverChanged || ed.index === 0) {
-    $('#titleInput').value = a.title || ''; $('#subtitleInput').value = a.subtitle || '';
+    $('#titleInput').value = a.title || ''; $('#subtitleInput').value = a.subtitle || ''; $('#subtitle2Input').value = a.subtitle2 || '';
     renderThemePicker();
   }
 }

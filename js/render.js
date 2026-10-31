@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=12';
+import { templateById, rng } from './layout.js?v=13';
 
 /*
  Theme fields
@@ -82,16 +82,45 @@ export const THEMES = {
     bgStyle: 'plain', deco: ['blobs'], shapeSolo: 'round', cover: 'framed', pageDeco: ['block:circle', 'dateLine'],
   },
   magazine: {
-    name: 'מגזין', desc: 'כותרות ענק, פס צבע, תמונות עד הקצה',
-    bg: '#ffffff', text: '#111111', accent: '#d9432b',
+    name: 'מגזין', desc: 'מודרני וצבעוני: בלוקים של צבע ומספרים ענקיים',
+    bg: '#ffffff', text: '#141414', accent: 'cycle', accentCycle: ['#ff4d6d', '#3a86ff', '#ffbe0b', '#06d6a0', '#8338ec', '#fb5607'],
     font: 'Heebo', titleWeight: 900, bodyWeight: 400,
-    margin: 10, gap: 3, frame: 'none', radius: 0, shadow: false, tilt: 0,
-    bgStyle: 'plain', deco: ['bars'], cover: 'magazine', fullBleedSolo: true, pageNumbers: true, labels: true, pageDeco: ['block:band', 'dateLine'],
+    margin: 11, gap: 3.5, frame: 'offset', radius: 0, shadow: false, tilt: 0,
+    bgStyle: 'plain', deco: [], cover: 'magazine', fullBleedSolo: true, labels: true,
+    pageDeco: ['block:diag', 'bigNumber', 'sideLabel'],
+  },
+  pastel: {
+    name: 'פסטל', desc: 'רקעים פסטליים מתחלפים ומסגרות לבנות עגולות',
+    bg: 'cycle', bgCycle: ['#fde2e4', '#dff0ea', '#dfe7fd', '#fff1d6', '#ece4f7'], text: '#4a4453', accent: '#e07a9b', accent2: '#7aa6c2',
+    font: 'Varela Round', titleWeight: 400, bodyWeight: 400,
+    margin: 14, gap: 6, frame: 'white', radius: 6, shadow: true, tilt: 0,
+    bgStyle: 'plain', deco: ['confetti'], shapeSolo: 'round', cover: 'framed', labels: true, pageDeco: ['dateLine'],
+  },
+  mono: {
+    name: 'שחור-לבן אלגנטי', desc: 'כל התמונות בשחור-לבן, טיפוגרפיה עדינה',
+    bg: '#f6f5f2', text: '#1a1a1a', accent: '#1a1a1a',
+    font: 'Bellefair', titleWeight: 400, bodyWeight: 400,
+    margin: 17, gap: 5, frame: 'none', radius: 0, shadow: false, tilt: 0, grayscale: true,
+    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true, labels: true, pageDeco: ['frameLines', 'dateLine'],
+  },
+  pop: {
+    name: 'פופ צבעוני', desc: 'צבעים עזים, נקודות קומיקס ומסגרות שחורות',
+    bg: 'cycle', bgCycle: ['#ffd23f', '#3bceac', '#ff7eb6', '#64b5ff', '#ff9f43'], text: '#111111', accent: '#111111', accent2: '#ffffff',
+    font: 'Secular One', titleWeight: 400, bodyWeight: 400,
+    margin: 13, gap: 7, frame: 'comic', radius: 0, shadow: false, tilt: 2.5,
+    bgStyle: 'halftone', deco: [], cover: 'framed', labels: true, pageDeco: ['dateLine'],
+  },
+  romantic: {
+    name: 'רומנטי', desc: 'ורוד עדין, אליפסות ונגיעות זהב',
+    bg: '#f9ece8', text: '#6b4a4a', accent: '#c29a5b', accent2: '#e3aaa2',
+    font: 'Frank Ruhl Libre', titleWeight: 400, bodyWeight: 400,
+    margin: 16, gap: 6, frame: 'white', radius: 0, shadow: true, tilt: 0,
+    bgStyle: 'paper', deco: ['hearts'], shapeSolo: 'oval', ovalChance: 0.3, cover: 'framed', labels: true, pageDeco: ['frameLines', 'dateLine'],
   },
 };
 for (const [id, t] of Object.entries(THEMES)) t.id = id;
 
-export const FONTS = ['Frank Ruhl Libre', 'Rubik', 'Amatic SC', 'Secular One', 'Heebo', 'Bellefair', 'Suez One', 'Karantina'];
+export const FONTS = ['Frank Ruhl Libre', 'Rubik', 'Amatic SC', 'Secular One', 'Heebo', 'Bellefair', 'Suez One', 'Karantina', 'Varela Round'];
 
 export async function ensureFonts() {
   if (!document.fonts) return;
@@ -119,13 +148,18 @@ function pageColors(theme, page, photosById) {
     const deep = mix(base, [20, 20, 30], 0.45);
     c = { bg: css(mix(base, [255, 255, 255], 0.66)), text: css(mix(base, [15, 15, 20], 0.75)), accent: css(deep) };
   } else {
-    c = { bg: theme.bg, text: theme.text, accent: theme.accent === 'auto' ? css(mix(base, [40, 40, 60], 0.35)) : theme.accent };
+    const pick = arr => arr[Math.floor((page.variant ?? 0.5) * 997) % arr.length];
+    c = {
+      bg: theme.bg === 'cycle' ? pick(theme.bgCycle) : theme.bg,
+      text: theme.text,
+      accent: theme.accent === 'auto' ? css(mix(base, [40, 40, 60], 0.35)) : theme.accent === 'cycle' ? pick(theme.accentCycle) : theme.accent,
+    };
   }
   c.accent2 = theme.accent2 || c.accent;
   if (page.bg) {
     c.bg = page.bg;
     const dark = lum(hex2rgb(page.bg)) < 0.45;
-    if (dark !== (lum(hex2rgb(toHex(theme.bg === 'auto' ? '#ffffff' : theme.bg))) < 0.45)) {
+    if (dark !== (lum(hex2rgb(toHex(theme.bg === 'auto' || theme.bg === 'cycle' ? '#ffffff' : theme.bg))) < 0.45)) {
       c.text = dark ? '#f4f1ea' : '#2a2622';
     }
   }
@@ -187,6 +221,26 @@ function drawCover(ctx, img, photo, x, y, w, h, crop) {
   const sx = Math.max(0, Math.min(iw - sw, f.x * iw - sw / 2));
   const sy = Math.max(0, Math.min(ih - sh, f.y * ih - sh / 2));
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+// draws the photo, in black & white for themes that ask for it
+function paint(ctx, img, photo, x, y, w, h, crop, theme) {
+  if (!theme?.grayscale) { drawCover(ctx, img, photo, x, y, w, h, crop); return; }
+  const cw = Math.max(1, Math.round(w)), ch = Math.max(1, Math.round(h));
+  const c = document.createElement('canvas');
+  c.width = cw; c.height = ch;
+  const t = c.getContext('2d', { willReadFrequently: true });
+  t.imageSmoothingQuality = 'high';
+  drawCover(t, img, photo, 0, 0, cw, ch, crop);
+  const d = t.getImageData(0, 0, cw, ch);
+  const a = d.data;
+  for (let i = 0; i < a.length; i += 4) {
+    let v = 0.299 * a[i] + 0.587 * a[i + 1] + 0.114 * a[i + 2];
+    v = Math.max(0, Math.min(255, (v - 128) * 1.08 + 128)); // a touch more contrast
+    a[i] = a[i + 1] = a[i + 2] = v;
+  }
+  t.putImageData(d, 0, 0);
+  ctx.drawImage(c, x, y, w, h);
 }
 
 const noiseCache = new Map();
@@ -458,6 +512,24 @@ function drawBackground(ctx, W, H, colors, theme, k, r, env, page) {
     ctx.fillStyle = noisePattern(ctx, k, [1, 1, 1], 18, 9);
     ctx.fillRect(0, 0, W, H);
   }
+  if (style === 'halftone') {
+    // comic-book dots fading out from two corners
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.13)';
+    const step = 3.2 * k;
+    const corners = r() < 0.5 ? [[0, 0], [W, H]] : [[W, 0], [0, H]];
+    for (const [cx0, cy0] of corners) {
+      const R = Math.min(W, H) * 0.55;
+      for (let yy = step / 2; yy < H; yy += step) for (let xx = step / 2; xx < W; xx += step) {
+        const d = Math.hypot(xx - cx0, yy - cy0);
+        if (d > R) continue;
+        const rad = (1 - d / R) * step * 0.42;
+        if (rad < 0.15 * k) continue;
+        ctx.beginPath(); ctx.arc(xx, yy, rad, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
   if (theme.deco.includes('blobs')) {
     ctx.save();
     ctx.globalAlpha = 0.22;
@@ -498,6 +570,27 @@ function drawOverlayDeco(ctx, theme, colors, g, r, page) {
   if (theme.deco.includes('goldCorners')) {
     const i3 = 9.5 * k;
     drawGoldCorners(ctx, B + i3, B + i3, PW - 2 * i3, PH - 2 * i3, k);
+  }
+  if ((theme.deco.includes('confetti') || theme.deco.includes('hearts')) && page.type !== 'cover') {
+    const hearts = theme.deco.includes('hearts');
+    const n = hearts ? 3 + Math.floor(r() * 3) : 10 + Math.floor(r() * 8);
+    const palette = hearts ? [colors.accent2, colors.accent] : ['#f4a3b5', '#9fd3c7', '#a7bff2', '#ffd59e', '#c7b4ea', colors.accent];
+    for (let i = 0; i < n; i++) {
+      const edge = Math.floor(r() * 4), along = 0.04 + r() * 0.92;
+      const pos = [[B + along * PW, B + M * (0.2 + r() * 0.5)], [B + along * PW, B + PH - M * (0.2 + r() * 0.5)],
+        [B + M * (0.2 + r() * 0.5), B + along * PH], [B + PW - M * (0.2 + r() * 0.5), B + along * PH]][edge];
+      const col = palette[Math.floor(r() * palette.length)];
+      if (hearts) { drawDoodle(ctx, 'heart', pos[0], pos[1], (3 + r() * 2.5) * k, col, k); continue; }
+      ctx.save();
+      ctx.translate(pos[0], pos[1]); ctx.rotate(r() * Math.PI);
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 0.5 * k; ctx.lineCap = 'round';
+      const sz = (0.8 + r() * 1.2) * k, kind = Math.floor(r() * 3);
+      ctx.beginPath();
+      if (kind === 0) { ctx.arc(0, 0, sz, 0, 7); ctx.fill(); }
+      else if (kind === 1) { ctx.moveTo(0, -sz * 1.2); ctx.lineTo(sz * 1.1, sz); ctx.lineTo(-sz * 1.1, sz); ctx.closePath(); ctx.fill(); }
+      else { ctx.moveTo(-sz * 2, 0); ctx.quadraticCurveTo(-sz, -sz * 1.5, 0, 0); ctx.quadraticCurveTo(sz, sz * 1.5, sz * 2, 0); ctx.stroke(); }
+      ctx.restore();
+    }
   }
   if (theme.deco.includes('doodles') && page.type !== 'cover') {
     const kinds = ['heart', 'star', 'swirl', 'dots', 'arrow'];
@@ -543,7 +636,7 @@ function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
     ctx.restore();
     ctx.save();
     ctx.beginPath(); ctx.rect(x + b, y + b, w - 2 * b, h - b - bottom); ctx.clip();
-    if (img) drawCover(ctx, img, photo, x + b, y + b, w - 2 * b, h - b - bottom, opts.crop); else placeholder();
+    if (img) paint(ctx, img, photo, x + b, y + b, w - 2 * b, h - b - bottom, opts.crop, theme); else placeholder();
     ctx.restore();
     if (opts.caption) drawText(ctx, opts.caption, x + w / 2, y + h - bottom / 2, { size: bottom * 0.5, weight: 700, family: 'Amatic SC', color: '#3a3a3a', maxW: w * 0.9 });
   } else if (frame === 'film') {
@@ -559,10 +652,16 @@ function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
     }
     ctx.save();
     ctx.beginPath(); ctx.rect(x + sp * 0.25, y + sp, w - sp * 0.5, h - 2 * sp); ctx.clip();
-    if (img) drawCover(ctx, img, photo, x + sp * 0.25, y + sp, w - sp * 0.5, h - 2 * sp, opts.crop); else placeholder();
+    if (img) paint(ctx, img, photo, x + sp * 0.25, y + sp, w - sp * 0.5, h - 2 * sp, opts.crop, theme); else placeholder();
     ctx.restore();
   } else {
     const border = frame === 'white' ? Math.max(1.4 * k, Math.min(w, h) * 0.035) : 0;
+    if ((frame === 'offset' || frame === 'comic') && !opts.full) {
+      // a solid block peeking out behind the photo
+      const off = Math.max(1.4 * k, Math.min(w, h) * (frame === 'comic' ? 0.035 : 0.05));
+      ctx.fillStyle = frame === 'comic' ? '#111' : colors.accent;
+      shapePath(ctx, shape, x - off, y + off, w, h, rad); ctx.fill();
+    }
     if ((theme.shadow || frame === 'white' || frame === 'gold') && !opts.full) {
       ctx.save();
       ctx.shadowColor = colors.dark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.25)';
@@ -579,8 +678,12 @@ function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
     const ix = x + border, iy = y + border, iw = w - 2 * border, ih = h - 2 * border;
     shapePath(ctx, shape, ix, iy, iw, ih, opts.full ? 0 : Math.max(0, rad - border));
     ctx.clip();
-    if (img) drawCover(ctx, img, photo, ix, iy, iw, ih, opts.crop); else placeholder();
+    if (img) paint(ctx, img, photo, ix, iy, iw, ih, opts.crop, theme); else placeholder();
     ctx.restore();
+    if (frame === 'comic' && !opts.full) {
+      ctx.strokeStyle = '#111'; ctx.lineWidth = 0.9 * k;
+      shapePath(ctx, shape, x, y, w, h, rad); ctx.stroke();
+    }
     if (frame === 'line' && !opts.full) {
       ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.25 * k;
       shapePath(ctx, shape, x + 0.1 * k, y + 0.1 * k, w - 0.2 * k, h - 0.2 * k, rad); ctx.stroke();
@@ -692,6 +795,7 @@ export async function renderPage(canvas, page, env) {
           const portraitish = box.w / box.h < 0.95;
           if (theme.shapeSolo && tpl.slots.length === 1) shape = theme.shapeSolo;
           else if (theme.archChance && portraitish && r() < theme.archChance) shape = 'arch';
+          else if (theme.ovalChance && r() < theme.ovalChance) shape = 'oval';
           else if (theme.shapeSolo === 'round') shape = 'round';
         }
         drawPhoto(ctx, imgs[i], p, box, theme, k, r, { shape, crop: cropOf(i), colors, caption: page.captions?.[page.photos[i]] || null });
@@ -798,6 +902,14 @@ function drawPageBlock(ctx, kind, theme, colors, g, r) {
       ctx.fillStyle = colors.accent;
       ctx.fillRect(side ? B + w - 0.6 * k : B + PW - w, B + PH * 0.1, 0.6 * k, PH * 0.8);
     }
+  } else if (kind === 'diag') {
+    // a bold slanted slab of color
+    ctx.fillStyle = colors.accent;
+    const a1 = PW * (0.42 + r() * 0.15), a2 = PW * (0.18 + r() * 0.15);
+    ctx.beginPath();
+    if (side) { ctx.moveTo(B - 1, B - 1); ctx.lineTo(B + a1, B - 1); ctx.lineTo(B + a2, B + PH + 1); ctx.lineTo(B - 1, B + PH + 1); }
+    else { ctx.moveTo(B + PW + 1, B - 1); ctx.lineTo(B + PW - a1, B - 1); ctx.lineTo(B + PW - a2, B + PH + 1); ctx.lineTo(B + PW + 1, B + PH + 1); }
+    ctx.closePath(); ctx.fill();
   } else if (kind === 'band') {
     const h = PH * (0.32 + r() * 0.12), y = B + PH * (0.25 + r() * 0.3);
     ctx.fillRect(B, y, PW + 2 * B, h);
@@ -818,7 +930,7 @@ function drawPageDecoUnder(ctx, theme, colors, g, r, page, tpl) {
   const deco = theme.pageDeco || [];
   if (tpl.full) return;
   const block = deco.find(d => d.startsWith('block:'));
-  if (block && page.decoBlock !== false && (page.decoBlock || r() < 0.65)) drawPageBlock(ctx, block.slice(6), theme, colors, g, r);
+  if (block && page.decoBlock !== false && (page.decoBlock || r() < (block === 'block:diag' ? 0.8 : 0.65))) drawPageBlock(ctx, block.slice(6), theme, colors, g, r);
 }
 
 function drawPageDecoOver(ctx, theme, colors, g, r, page, tpl) {
@@ -845,12 +957,23 @@ function drawPageDecoOver(ctx, theme, colors, g, r, page, tpl) {
     }
     ctx.restore();
   }
+  if (deco.includes('sideLabel')) {
+    const text = page.label || pageDateText(page, g.photoOf);
+    if (text) {
+      const left = (g.pageNumber || 1) % 2 === 0;
+      ctx.save();
+      ctx.translate(left ? B + M * 0.5 : B + PW - M * 0.5, B + PH / 2);
+      ctx.rotate(left ? -Math.PI / 2 : Math.PI / 2);
+      drawText(ctx, text, 0, 0, { size: Math.min(M * 0.32, 3.6 * k), weight: 700, family: theme.font, color: colors.accent, maxW: PH * 0.6 });
+      ctx.restore();
+    }
+  }
   if (deco.includes('bigNumber') && g.pageNumber) {
     const left = g.pageNumber % 2 === 0;
     ctx.save();
     ctx.globalAlpha = 0.9;
     drawText(ctx, String(g.pageNumber).padStart(2, '0'), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * 0.5, {
-      size: Math.min(M * 0.6, 7 * k), weight: 700, family: theme.font, color: colors.accent, maxW: M * 2, align: left ? 'left' : 'right',
+      size: Math.min(M * (theme.id === 'magazine' ? 0.95 : 0.6), (theme.id === 'magazine' ? 11 : 7) * k), weight: theme.id === 'magazine' ? 900 : 700, family: theme.font, color: colors.accent, maxW: M * 3, align: left ? 'left' : 'right',
     });
     ctx.restore();
   }
@@ -878,7 +1001,7 @@ function drawPageDecoOver(ctx, theme, colors, g, r, page, tpl) {
 }
 
 // a framed hero photo with title underneath (used by most covers/chapters)
-async function framedHero(ctx, page, theme, g, { title, sub, titleScale = 1, top = 1.4 }) {
+async function framedHero(ctx, page, theme, g, { title, sub, sub2 = '', titleScale = 1, top = 1.4 }) {
   const { B, PW, PH, M, k, r, colors, load, photoOf, slots, cropOf } = g;
   const p = photoOf(page.photos[0]);
   const fam = theme.font;
@@ -894,12 +1017,17 @@ async function framedHero(ctx, page, theme, g, { title, sub, titleScale = 1, top
   slots.push({ x: bx, y: by, w: bw, h: bh, index: 0 });
   drawOverlayDeco(ctx, theme, colors, g, r, page);
   const rest = PH - (by - B) - bh;
-  const ty = by + bh + rest * 0.4;
+  const ty = by + bh + rest * (sub2 ? 0.3 : 0.4);
   const big = polaroid || theme.font === 'Amatic SC' || theme.font === 'Karantina';
   textGroup(ctx, g, 'title', B + PW / 2, ty, () => {
     const ts = drawText(ctx, title, B + PW / 2, ty, { size: PH * (big ? 0.11 : 0.075) * titleScale, weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85, gold: theme.goldText });
-    if (sub) drawText(ctx, sub, B + PW / 2, ty + ts * 0.62 + PH * 0.035, { size: PH * (big ? 0.05 : 0.038), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
-    else if (title) {
+    let ly = ty + ts * 0.62 + PH * 0.035;
+    if (sub) {
+      const ss = drawText(ctx, sub, B + PW / 2, ly, { size: PH * (big ? 0.05 : 0.038), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
+      ly += ss * 1.25;
+    }
+    if (sub2) drawText(ctx, sub2, B + PW / 2, ly, { size: PH * (big ? 0.04 : 0.03), weight: theme.bodyWeight, family: fam, color: colors.text, maxW: PW * 0.8, gold: theme.goldText });
+    if (!sub && !sub2 && title) {
       const oy = ty + ts * 0.62 + PH * 0.02;
       ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 10 * k, oy, 20 * k, 1) : colors.accent;
       ctx.fillRect(B + PW / 2 - 10 * k, oy, 20 * k, 0.4 * k);
@@ -921,9 +1049,10 @@ async function renderCover(ctx, page, env, theme, g) {
   const { W, H, B, PW, PH, M, k, colors } = g;
   const title = album.title || album.name || 'האלבום שלנו';
   const sub = album.subtitle || '';
+  const sub2 = album.subtitle2 || '';
   const fam = theme.font;
   if (theme.cover === 'framed') {
-    await framedHero(ctx, page, theme, g, { title, sub, titleScale: 1.15 });
+    await framedHero(ctx, page, theme, g, { title, sub, sub2, titleScale: 1.15 });
     return;
   }
   await fullBleedHero(ctx, page, theme, g);
@@ -938,12 +1067,24 @@ async function renderCover(ctx, page, env, theme, g) {
     // magazine title lives at the top unless the subject is there
     const top = placeTop(page, g, 'title', sy >= 0.4);
     shade(top);
-    const y0 = top ? B + M + PH * 0.08 : B + PH - M - PH * 0.2;
+    const y0 = top ? B + M + PH * 0.08 : B + PH - M - PH * (sub2 ? 0.27 : 0.2);
     textGroup(ctx, g, 'title', B + PW - M, y0, () => {
       drawText(ctx, title, B + PW - M, y0, { size: PH * 0.16, weight: 900, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
-      ctx.fillStyle = colors.accent;
-      ctx.fillRect(B + PW - M - 30 * k, y0 + PH * 0.08, 30 * k, 2.2 * k);
-      drawText(ctx, sub, B + PW - M, y0 + PH * 0.13, { size: PH * 0.045, weight: 700, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
+      // subtitle on a bold colored tag
+      if (sub) {
+        const fs = PH * 0.042;
+        ctx.save();
+        ctx.font = `700 ${fitFont(ctx, sub, 700, fam, fs, PW - 2 * M)}px "${fam}"`;
+        const w = ctx.measureText(sub).width;
+        ctx.fillStyle = colors.accent;
+        ctx.fillRect(B + PW - M - w - fs * 0.8, y0 + PH * 0.1, w + fs * 0.8, fs * 1.5);
+        ctx.restore();
+        drawText(ctx, sub, B + PW - M - fs * 0.4, y0 + PH * 0.1 + fs * 0.78, { size: fs, weight: 700, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right' });
+      } else {
+        ctx.fillStyle = colors.accent;
+        ctx.fillRect(B + PW - M - 30 * k, y0 + PH * 0.08, 30 * k, 2.2 * k);
+      }
+      if (sub2) drawText(ctx, sub2, B + PW - M, y0 + PH * (sub ? 0.2 : 0.13), { size: PH * 0.036, weight: 400, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
     });
     return;
   }
@@ -951,12 +1092,13 @@ async function renderCover(ctx, page, env, theme, g) {
   const top = placeTop(page, g, 'title', sy > 0.58);
   shade(top);
   const big = theme.font === 'Karantina';
-  const y0 = top ? B + M * 1.5 + PH * 0.08 : B + PH - M * 1.5 - PH * 0.09;
+  const y0 = top ? B + M * 1.5 + PH * 0.08 : B + PH - M * 1.5 - PH * (sub2 ? 0.15 : 0.09);
   textGroup(ctx, g, 'title', B + PW - M * 1.5, y0, () => {
     drawText(ctx, title, B + PW - M * 1.5, y0, { size: PH * (big ? 0.16 : 0.1), weight: 700, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right', shadow: true });
     ctx.fillStyle = colors.accent;
     ctx.fillRect(B + PW - M * 1.5 - 18 * k, y0 + PH * 0.065, 18 * k, 0.9 * k);
     drawText(ctx, sub, B + PW - M * 1.5, y0 + PH * 0.095, { size: PH * (big ? 0.06 : 0.04), weight: 300, family: fam, color: '#f0f0f0', maxW: PW - 3 * M, align: 'right', shadow: true });
+    if (sub2) drawText(ctx, sub2, B + PW - M * 1.5, y0 + PH * (sub ? 0.15 : 0.095), { size: PH * (big ? 0.045 : 0.032), weight: 300, family: fam, color: '#e8e8e8', maxW: PW - 3 * M, align: 'right', shadow: true });
   });
 }
 
@@ -977,6 +1119,14 @@ async function renderChapter(ctx, page, env, theme, g) {
     const cy = B + PH * (pos === 'top' ? 0.24 : pos === 'bottom' ? 0.76 : 0.5);
     const big = theme.font === 'Karantina';
     textGroup(ctx, g, 'title', B + PW / 2, cy, () => {
+      if (theme.id === 'magazine') {
+        // bold color stripe behind the chapter title
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = colors.accent;
+        ctx.fillRect(0, cy - PH * 0.1, W, PH * (page.subtitle ? 0.25 : 0.2));
+        ctx.restore();
+      }
       if (theme.deco.includes('bars')) {
         ctx.fillStyle = colors.accent;
         ctx.fillRect(B + PW / 2 - 15 * k, cy - PH * 0.13, 30 * k, 2 * k);
