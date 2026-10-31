@@ -306,11 +306,20 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
 @media (max-width: 860px) {
   .editor { padding: 0; }
   .ed-box { height: 100%; border-radius: 0; }
-  .ed-body { grid-template-columns: 1fr; overflow-y: auto; }
-  .ed-stage { padding: 12px; overflow: visible; }
-  .ed-side { border-inline-start: none; border-top: 1px solid var(--line); overflow: visible; }
-  .ed-head { flex-wrap: wrap; }
+  .ed-head { flex-wrap: nowrap; padding: 8px 10px; gap: 6px; }
+  .ed-head h3 { font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ed-head .btn { padding: 7px 12px; }
+  /* one scrolling column; the page preview stays pinned under the header */
+  .ed-body { display: block; overflow-y: auto; }
+  .ed-stage {
+    position: sticky; top: 0; z-index: 2; min-height: auto; overflow: visible;
+    padding: 10px 12px 6px; background: var(--bg); border-bottom: 1px solid var(--line);
+    box-shadow: 0 6px 14px rgba(50,30,10,.08);
+  }
+  .ed-hint { margin-top: 6px; font-size: .78rem; }
+  .ed-side { border-inline-start: none; overflow: visible; padding-bottom: 40px; }
 }
+
 
 .ed-pos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 4px 0 10px; }
 .ed-pos .btn { border-color: var(--line); padding: 6px 4px; }

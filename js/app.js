@@ -1,7 +1,7 @@
-import * as db from './db.js?v=7';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=7';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=7';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=7';
+import * as db from './db.js?v=8';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=8';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=8';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=8';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -819,8 +819,10 @@ function edEnv() {
   const a = state.album;
   const f = formatOf(a);
   const stage = $('.ed-stage');
-  const maxW = Math.max(240, Math.min(stage.clientWidth - 36, 720));
-  const maxH = Math.max(240, stage.clientHeight - 70);
+  const narrow = matchMedia('(max-width: 860px)').matches;
+  // on phones the page is pinned at the top, so keep it to ~40% of the screen height
+  const maxW = narrow ? Math.max(200, stage.clientWidth - 24) : Math.max(240, Math.min(stage.clientWidth - 36, 720));
+  const maxH = narrow ? Math.max(200, innerHeight * 0.4) : Math.max(240, stage.clientHeight - 70);
   const cssW = Math.min(maxW, maxH * f.w / f.h);
   return {
     format: f, theme: themeOf(a), album: ed.album, photosById: photosById(), bleed: 0,
