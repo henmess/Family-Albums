@@ -1,7 +1,7 @@
 // Automatic album layout: chooses page templates, groups photos into
 // chapters (events) and assigns photos to slots so cropping is minimal.
-import { isIncluded } from './analyze.js?v=5';
-import { uid } from './db.js?v=5';
+import { isIncluded } from './analyze.js?v=6';
+import { uid } from './db.js?v=6';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -27,6 +27,7 @@ export const TEMPLATES = [
   T('duo-rows', [[0, 0, 1, 0.5], [0, 0.5, 1, 0.5]]),
   T('duo-big-small', [[0, 0, 0.64, 1], [0.64, 0, 0.36, 1]]),
   T('duo-steps', [[0, 0, 0.6, 0.58], [0.4, 0.42, 0.6, 0.58]], { overlap: true }),
+  T('duo-overlap', [[0, 0.05, 0.62, 0.62], [0.38, 0.35, 0.62, 0.62]], { overlap: true }),
   T('duo-centered', [[0, 0.12, 0.5, 0.76], [0.5, 0.12, 0.5, 0.76]]),
   // 3 photos
   T('tri-big-right', [[0, 0, 0.6, 1], [0.6, 0, 0.4, 0.5], [0.6, 0.5, 0.4, 0.5]]),
@@ -35,7 +36,11 @@ export const TEMPLATES = [
   T('tri-cols', [[0, 0, third, 1], [third, 0, third, 1], [2 * third, 0, third, 1]]),
   T('tri-rows', [[0, 0, 1, third], [0, third, 1, third], [0, 2 * third, 1, third]]),
   T('tri-scatter', [[0, 0, 0.55, 0.5], [0.45, 0.25, 0.55, 0.5], [0, 0.5, 0.55, 0.5]], { overlap: true }),
+  T('tri-diagonal', [[0, 0, 0.52, 0.48], [0.24, 0.26, 0.52, 0.48], [0.48, 0.52, 0.52, 0.48]], { overlap: true }),
+  T('tri-hero-center', [[0.2, 0, 0.6, 0.62], [0, 0.62, 0.5, 0.38], [0.5, 0.62, 0.5, 0.38]]),
   // 4 photos
+  T('quad-row', [[0, 0.2, 0.25, 0.6], [0.25, 0.2, 0.25, 0.6], [0.5, 0.2, 0.25, 0.6], [0.75, 0.2, 0.25, 0.6]]),
+  T('quad-scatter', [[0, 0, 0.55, 0.5], [0.45, 0.04, 0.55, 0.46], [0.02, 0.52, 0.5, 0.48], [0.48, 0.48, 0.52, 0.52]], { overlap: true }),
   T('quad-grid', [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]]),
   T('quad-hero-strip', [[0, 0, 1, 0.64], [0, 0.64, third, 0.36], [third, 0.64, third, 0.36], [2 * third, 0.64, third, 0.36]]),
   T('quad-hero-side', [[0, 0, 0.62, 1], [0.62, 0, 0.38, third], [0.62, third, 0.38, third], [0.62, 2 * third, 0.38, third]]),
@@ -171,7 +176,9 @@ export function generateAlbum(allPhotos, settings, theme) {
   const events = splitEvents(photos);
   for (const ev of events) {
     let flow = ev;
+    let hasChapter = false;
     if (settings.chapters && events.length > 1 && ev.length >= 5) {
+      hasChapter = true;
       const hero = [...ev].sort((a, b) => b.quality.score - a.quality.score)[0];
       pages.push({ id: uid(), type: 'chapter', photos: [hero.id], title: eventTitle(ev), variant: r() });
       flow = ev.filter(p => p !== hero);
@@ -191,7 +198,9 @@ export function generateAlbum(allPhotos, settings, theme) {
         ? { template: 'solo-full', photos: [group[0].id] }
         : chooseTemplate(group, contentAR, r, { allowOverlap: overlapOK, avoid: lastTpl });
       lastTpl = choice.template;
-      pages.push({ id: uid(), type: 'photos', ...choice, variant: r() });
+      const page = { id: uid(), type: 'photos', ...choice, variant: r() };
+      if (i === 0 && !hasChapter && events.length > 1) page.label = eventTitle(ev);
+      pages.push(page);
       i += n;
     }
   }
@@ -228,5 +237,6 @@ export function rerollPage(page, photosById, settings, theme) {
   const choice = chooseTemplate(ps, contentAR, r, {
     allowOverlap: !!theme.allowOverlap, allowFull: theme.fullBleedSolo, avoid: page.template,
   });
-  return { ...page, ...choice, variant: r() };
+  const { shapes, ...rest } = page; // shapes belong to the old slots
+  return { ...rest, ...choice, variant: r() };
 }

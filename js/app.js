@@ -1,7 +1,7 @@
-import * as db from './db.js?v=5';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=5';
-import { generateAlbum, rerollPage, templateById } from './layout.js?v=5';
-import { THEMES, renderPage, ensureFonts } from './render.js?v=5';
+import * as db from './db.js?v=6';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=6';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=6';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=6';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -567,10 +567,9 @@ async function renderThemePicker() {
     };
     wrap.appendChild(b);
     if (cover) {
-      const f = { w: 60, h: 60 * formatOf(a).h / formatOf(a).w };
-      renderPage(b.querySelector('canvas'), cover, {
-        format: f, theme: { ...t, margin: t.margin * 0.3, gap: t.gap * 0.3 }, album: a,
-        photosById: photosById(), pxPerMm: 2, getImage: thumbBitmap,
+      const f = formatOf(a);
+      renderPage(b.querySelector('canvas'), { ...cover, style: null, bg: null, shapes: null }, {
+        format: f, theme: t, album: a, photosById: photosById(), pxPerMm: 260 / f.w, getImage: thumbBitmap,
       }).catch(() => {});
     }
   }
@@ -655,13 +654,14 @@ function renderPages() {
           <span class="pnum">${label}</span>
           <div class="acts">
             ${pg.type === 'photos' ? '<button data-act="reroll" title="פריסה אחרת">🔄</button><button data-act="shuffle" title="ערבוב סדר התמונות">🔀</button>' : '<button data-act="reroll" title="וריאציה">🔄</button>'}
-            <button data-act="text" title="טקסט">✏️</button>
+            <button data-act="edit" title="עריכת העמוד">✏️</button>
             ${i > 1 ? '<button data-act="up" title="הזזה אחורה">⬅</button>' : ''}
             ${i > 0 && i < pages.length - 1 ? '<button data-act="down" title="הזזה קדימה">➡</button>' : ''}
             ${i > 0 ? '<button data-act="del" title="מחיקת העמוד">🗑</button>' : ''}
           </div>
         </div>`;
       el.querySelectorAll('[data-act]').forEach(btn => btn.onclick = () => pageAction(i, btn.dataset.act));
+      el.querySelector('.canvas-wrap').onclick = () => openEditor(i);
       s.appendChild(el);
       io.observe(el);
     }
@@ -701,11 +701,12 @@ async function pageAction(i, act) {
   const pages = a.pages;
   const pg = pages[i];
   if (act === 'reroll') {
-    pages[i] = rerollPage(pg, photosById(), settingsOf(a), themeOf(a));
+    pages[i] = rerollPage(pg, photosById(), settingsOf(a), effectiveTheme(pg, themeOf(a)));
     await db.saveAlbum(a);
     rerenderPage(i);
     return;
   }
+  if (act === 'edit') { openEditor(i); return; }
   if (act === 'shuffle') {
     const ids = [...pg.photos];
     for (let k = ids.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [ids[k], ids[j]] = [ids[j], ids[k]]; }
@@ -807,6 +808,342 @@ async function exportPDF() {
     btn.disabled = false;
     btn.textContent = '⬇️ הורדת PDF להדפסה';
     canvas.width = canvas.height = 1;
+  }
+}
+
+
+// ================= page editor =================
+const ed = { index: -1, page: null, sel: null, swap: false, slots: [], scale: 1, rendering: false, again: false, album: null };
+
+function edEnv() {
+  const a = state.album;
+  const f = formatOf(a);
+  const stage = $('.ed-stage');
+  const maxW = Math.max(240, Math.min(stage.clientWidth - 36, 720));
+  const maxH = Math.max(240, stage.clientHeight - 70);
+  const cssW = Math.min(maxW, maxH * f.w / f.h);
+  return {
+    format: f, theme: themeOf(a), album: ed.album, photosById: photosById(), bleed: 0,
+    pxPerMm: (cssW * Math.min(2, devicePixelRatio || 1)) / f.w, getImage: thumbBitmap, pageNumber: ed.index, cssW,
+  };
+}
+
+async function edRender() {
+  if (ed.rendering) { ed.again = true; return; }
+  ed.rendering = true;
+  try {
+    const env = edEnv();
+    const c = document.createElement('canvas');
+    const res = await renderPage(c, ed.page, env);
+    const old = $('#edCanvas');
+    c.id = 'edCanvas';
+    c.style.width = env.cssW + 'px';
+    old.replaceWith(c);
+    ed.slots = res.slots;
+    ed.scale = env.cssW / c.width;
+    c.onpointerdown = edPointerDown;
+    edDrawSel();
+  } finally {
+    ed.rendering = false;
+    if (ed.again) { ed.again = false; edRender(); }
+  }
+}
+
+function edDrawSel() {
+  const box = $('#edSel');
+  const s = ed.slots.find(x => x.index === ed.sel);
+  box.classList.toggle('hidden', !s);
+  box.classList.toggle('swap', ed.swap);
+  if (!s) return;
+  Object.assign(box.style, { left: s.x * ed.scale + 'px', top: s.y * ed.scale + 'px', width: s.w * ed.scale + 'px', height: s.h * ed.scale + 'px' });
+}
+
+function edHit(ev) {
+  const rect = $('#edCanvas').getBoundingClientRect();
+  const x = (ev.clientX - rect.left) / ed.scale, y = (ev.clientY - rect.top) / ed.scale;
+  for (let i = ed.slots.length - 1; i >= 0; i--) {
+    const s = ed.slots[i];
+    if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s;
+  }
+  return null;
+}
+
+function cropFor(i) {
+  const pid = ed.page.photos[i];
+  const p = photosById().get(pid);
+  ed.page.crops ||= {};
+  if (!ed.page.crops[pid]) ed.page.crops[pid] = { x: p?.focal?.x ?? 0.5, y: p?.focal?.y ?? 0.5, zoom: 1 };
+  return ed.page.crops[pid];
+}
+
+function edPointerDown(ev) {
+  const hit = edHit(ev);
+  if (!hit) { ed.sel = null; ed.swap = false; edUpdatePanel(); edDrawSel(); return; }
+  if (ed.swap && ed.sel != null && hit.index !== ed.sel) {
+    const ps = ed.page.photos;
+    [ps[ed.sel], ps[hit.index]] = [ps[hit.index], ps[ed.sel]];
+    ed.swap = false; ed.sel = hit.index;
+    edUpdatePanel(); edRender();
+    return;
+  }
+  const wasSelected = ed.sel === hit.index;
+  ed.sel = hit.index; ed.swap = false;
+  edUpdatePanel(); edDrawSel();
+  if (!wasSelected) return;
+  // drag to pan the crop
+  const p = photosById().get(ed.page.photos[hit.index]);
+  if (!p) return;
+  const crop = cropFor(hit.index);
+  const start = { x: ev.clientX, y: ev.clientY, cx: crop.x, cy: crop.y };
+  const canvas = $('#edCanvas');
+  canvas.setPointerCapture(ev.pointerId);
+  let raf = 0;
+  const move = e => {
+    const wPx = hit.w * ed.scale, hPx = hit.h * ed.scale;
+    const s = Math.max(hit.w / p.width, hit.h / p.height) * (crop.zoom || 1);
+    const fw = Math.min(1, (hit.w / s) / p.width), fh = Math.min(1, (hit.h / s) / p.height);
+    crop.x = Math.max(fw / 2, Math.min(1 - fw / 2, start.cx - (e.clientX - start.x) / wPx * fw));
+    crop.y = Math.max(fh / 2, Math.min(1 - fh / 2, start.cy - (e.clientY - start.y) / hPx * fh));
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; edRender(); });
+  };
+  const up = () => { canvas.removeEventListener('pointermove', move); canvas.removeEventListener('pointerup', up); canvas.removeEventListener('pointercancel', up); };
+  canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup', up);
+  canvas.addEventListener('pointercancel', up);
+}
+
+function edTheme() { return effectiveTheme(ed.page, themeOf(state.album)); }
+
+function relayout(photoIds, avoid) {
+  const byId = photosById();
+  const ps = photoIds.map(id => byId.get(id)).filter(Boolean);
+  const choice = chooseTemplate(ps, contentAspect(formatOf(state.album), edTheme()), rng(Math.floor(Math.random() * 1e9)),
+    { allowOverlap: !!edTheme().allowOverlap, avoid });
+  ed.page.template = choice.template;
+  ed.page.photos = choice.photos;
+  delete ed.page.shapes;
+}
+
+function edUpdatePanel() {
+  const pg = ed.page;
+  const isPhotos = pg.type === 'photos';
+  const hasSel = ed.sel != null && pg.photos.length > 0 && pg.type !== 'end';
+  $('#edSlot').classList.toggle('hidden', !hasSel);
+  $('#edSwap').classList.toggle('hidden', !isPhotos || pg.photos.length < 2);
+  $('#edRemove').classList.toggle('hidden', !isPhotos);
+  $('#edSwap').textContent = ed.swap ? 'בחרו תמונה להחלפה…' : '↔ החלפת מקום';
+  $('#edHint').textContent = ed.swap ? 'לחצו על התמונה שאיתה להחליף מקום'
+    : hasSel ? 'גררו את התמונה המסומנת כדי לשנות את החיתוך' : 'לחצו על תמונה כדי לבחור אותה';
+  if (hasSel) {
+    const pid = pg.photos[ed.sel];
+    $('#edZoom').value = pg.crops?.[pid]?.zoom || 1;
+    const shape = pg.shapes?.[ed.sel] || '';
+    $$('#edShape button').forEach(b => b.classList.toggle('active', b.dataset.v === shape));
+  }
+  // layouts
+  $('#edLayoutSec').classList.toggle('hidden', !isPhotos);
+  if (isPhotos) {
+    const wrap = $('#edLayouts');
+    wrap.innerHTML = '';
+    const f = formatOf(state.album);
+    const n = pg.photos.length;
+    for (const t of TEMPLATES.filter(t => t.slots.length === n)) {
+      const b = document.createElement('button');
+      b.className = t.id === pg.template ? 'active' : '';
+      b.title = t.id;
+      const c = document.createElement('canvas');
+      drawTemplateIcon(c, t, f.w / f.h);
+      b.appendChild(c);
+      b.onclick = () => { pg.template = t.id; delete pg.shapes; edUpdatePanel(); edRender(); };
+      wrap.appendChild(b);
+    }
+    $('#edAdd').disabled = n >= 6;
+  }
+  // styles
+  const st = $('#edStyles');
+  st.innerHTML = '';
+  const addChip = (id, name) => {
+    const b = document.createElement('button');
+    b.className = 'chip small' + ((pg.style || '') === id ? ' active' : '');
+    b.textContent = name;
+    b.onclick = () => { if (id) pg.style = id; else delete pg.style; edUpdatePanel(); edRender(); };
+    st.appendChild(b);
+  };
+  addChip('', 'כמו האלבום');
+  for (const [id, t] of Object.entries(THEMES)) addChip(id, t.name);
+  // backgrounds
+  const bgs = $('#edBgs');
+  bgs.innerHTML = '';
+  const def = document.createElement('button');
+  def.textContent = 'אוטו';
+  def.title = 'צבע הסגנון';
+  def.className = pg.bg ? '' : 'active';
+  def.onclick = () => { delete pg.bg; edUpdatePanel(); edRender(); };
+  bgs.appendChild(def);
+  for (const c of BG_SWATCHES) {
+    const b = document.createElement('button');
+    b.style.background = c;
+    b.className = pg.bg === c ? 'active' : '';
+    b.onclick = () => { pg.bg = c; edUpdatePanel(); edRender(); };
+    bgs.appendChild(b);
+  }
+  const custom = document.createElement('input');
+  custom.type = 'color'; custom.title = 'צבע אחר';
+  custom.value = pg.bg && pg.bg.startsWith('#') ? pg.bg : '#ffffff';
+  custom.oninput = debounce(() => { pg.bg = custom.value; edRender(); }, 120);
+  bgs.appendChild(custom);
+  // text
+  const tx = $('#edText');
+  const field = (label, value, set, ph = '') => {
+    const l = document.createElement('label'); l.className = 'lbl'; l.textContent = label;
+    const i = document.createElement('input'); i.className = 'input'; i.value = value || ''; i.placeholder = ph;
+    i.oninput = debounce(() => { set(i.value); edRender(); }, 250);
+    tx.append(l, i);
+  };
+  tx.innerHTML = '';
+  if (pg.type === 'cover') {
+    field('כותרת', ed.album.title, v => ed.album.title = v);
+    field('כותרת משנה', ed.album.subtitle, v => ed.album.subtitle = v);
+  } else if (pg.type === 'photos') {
+    field('כיתוב בתחתית העמוד', pg.caption, v => pg.caption = v, 'למשל: סבתא וסבא בחתונה');
+    if (edTheme().labels) field('תווית בראש העמוד', pg.label, v => pg.label = v, 'למשל: יולי 2025');
+  } else {
+    field('כותרת', pg.title, v => pg.title = v);
+    field('שורה נוספת', pg.subtitle, v => pg.subtitle = v, pg.type === 'chapter' ? 'למשל: הטיול לצפון' : '');
+  }
+}
+
+async function openEditor(i) {
+  const a = state.album;
+  if (!a.pages?.[i]) return;
+  ed.index = i;
+  ed.page = structuredClone(a.pages[i]);
+  ed.album = { ...a, pages: undefined };
+  ed.sel = ed.page.photos.length === 1 ? 0 : null;
+  ed.swap = false;
+  const label = i === 0 ? 'כריכה' : ({ chapter: 'פתיחת פרק', end: 'עמוד סיום' }[ed.page.type] || 'עמוד');
+  $('#edTitle').textContent = `${label} · ${i === 0 ? '' : i + ' מתוך ' + (a.pages.length - 1)}`.replace(/ · $/, '');
+  $('#edPrev').disabled = i === 0;
+  $('#edNext').disabled = i >= a.pages.length - 1;
+  $('#editor').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  edUpdatePanel();
+  await edRender();
+}
+
+async function edCommit() {
+  const a = state.album;
+  a.pages[ed.index] = ed.page;
+  const coverChanged = ed.page.type === 'cover' && (a.title !== ed.album.title || a.subtitle !== ed.album.subtitle);
+  a.title = ed.album.title; a.subtitle = ed.album.subtitle;
+  await db.saveAlbum(a);
+  rerenderPage(ed.index);
+  if (coverChanged || ed.index === 0) {
+    $('#titleInput').value = a.title || ''; $('#subtitleInput').value = a.subtitle || '';
+    renderThemePicker();
+  }
+}
+function closeEditor() {
+  $('#editor').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+$('#edSave').onclick = async () => { await edCommit(); closeEditor(); toast('העמוד נשמר'); };
+$('#edCancel').onclick = closeEditor;
+$('#edPrev').onclick = async () => { await edCommit(); openEditor(ed.index - 1); };
+$('#edNext').onclick = async () => { await edCommit(); openEditor(ed.index + 1); };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#editor').classList.contains('hidden') && $('#picker').classList.contains('hidden')) closeEditor(); });
+window.addEventListener('resize', debounce(() => { if (!$('#editor').classList.contains('hidden')) edRender(); }, 200));
+
+$('#edZoom').oninput = () => {
+  if (ed.sel == null) return;
+  cropFor(ed.sel).zoom = +$('#edZoom').value;
+  edRender();
+};
+$('#edResetCrop').onclick = () => {
+  if (ed.sel == null || !ed.page.crops) return;
+  delete ed.page.crops[ed.page.photos[ed.sel]];
+  $('#edZoom').value = 1;
+  edRender();
+};
+$$('#edShape button').forEach(b => b.onclick = () => {
+  if (ed.sel == null) return;
+  ed.page.shapes ||= {};
+  if (b.dataset.v) ed.page.shapes[ed.sel] = b.dataset.v; else delete ed.page.shapes[ed.sel];
+  edUpdatePanel(); edRender();
+});
+$('#edSwap').onclick = () => { ed.swap = !ed.swap; edUpdatePanel(); edDrawSel(); };
+$('#edReplace').onclick = async () => {
+  const id = await pickPhoto();
+  if (!id || ed.sel == null) return;
+  ed.page.photos[ed.sel] = id;
+  edUpdatePanel(); edRender();
+};
+$('#edRemove').onclick = () => {
+  const pg = ed.page;
+  if (pg.photos.length <= 1) { toast('זו התמונה היחידה בעמוד – אפשר להחליף אותה, או למחוק את כל העמוד'); return; }
+  const ids = pg.photos.filter((_, k) => k !== ed.sel);
+  relayout(ids);
+  ed.sel = null;
+  edUpdatePanel(); edRender();
+};
+$('#edAdd').onclick = async () => {
+  const id = await pickPhoto();
+  if (!id) return;
+  relayout([...ed.page.photos, id]);
+  ed.sel = ed.page.photos.indexOf(id);
+  edUpdatePanel(); edRender();
+};
+$('#edAuto').onclick = () => { relayout(ed.page.photos, ed.page.template); edUpdatePanel(); edRender(); };
+$('#edVariant').onclick = () => { ed.page.variant = Math.random(); edRender(); };
+
+// ---------- photo picker ----------
+let pickerResolve = null;
+let pickerTab = 'unused';
+function pickPhoto() {
+  return new Promise(resolve => {
+    pickerResolve = resolve;
+    $('#picker').classList.remove('hidden');
+    renderPicker();
+  });
+}
+function closePicker(id) {
+  $('#picker').classList.add('hidden');
+  $('#pickerGrid').innerHTML = '';
+  const r = pickerResolve; pickerResolve = null;
+  r && r(id || null);
+}
+$('#pickerClose').onclick = () => closePicker(null);
+$('#picker').onclick = e => { if (e.target.id === 'picker') closePicker(null); };
+$$('#pickerTabs button').forEach(b => b.onclick = () => {
+  pickerTab = b.dataset.v;
+  $$('#pickerTabs button').forEach(x => x.classList.toggle('active', x === b));
+  renderPicker();
+});
+function renderPicker() {
+  const a = state.album;
+  const usedOn = new Map();
+  (a.pages || []).forEach((pg, i) => (i === ed.index ? ed.page : pg).photos.forEach(id => { if (!usedOn.has(id)) usedOn.set(id, i); }));
+  let list = [...state.photos].sort((x, y) => x.date - y.date);
+  if (pickerTab === 'unused') list = list.filter(p => !usedOn.has(p.id)).sort((x, y) => isIncluded(y) - isIncluded(x) || x.date - y.date);
+  const grid = $('#pickerGrid');
+  grid.innerHTML = list.length ? '' : '<p class="small">כל התמונות כבר נמצאות באלבום. עברו ל"כל התמונות" או העלו תמונות נוספות.</p>';
+  for (const p of list) {
+    const b = document.createElement('button');
+    if (!isIncluded(p)) b.className = 'excluded';
+    const img = document.createElement('img');
+    img.loading = 'lazy';
+    if (p.thumb instanceof Blob) { const u = URL.createObjectURL(p.thumb); img.src = u; img.onload = () => URL.revokeObjectURL(u); }
+    b.appendChild(img);
+    if (usedOn.has(p.id)) {
+      const n = usedOn.get(p.id);
+      b.insertAdjacentHTML('beforeend', `<span class="used">${n === 0 ? 'בכריכה' : 'בעמוד ' + n}</span>`);
+    }
+    b.onclick = async () => {
+      if (!isIncluded(p)) { p.manual = 'in'; await db.updatePhoto(p); }
+      closePicker(p.id);
+    };
+    grid.appendChild(b);
   }
 }
 

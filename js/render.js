@@ -1,46 +1,97 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
-// preview (small thumbnails) and for the print PDF (full resolution).
-import { templateById, rng } from './layout.js?v=5';
+// preview (small thumbnails), the page editor and the print PDF.
+import { templateById, rng } from './layout.js?v=6';
 
+/*
+ Theme fields
+  frame:      none | line | white | polaroid | gold | film
+  bgStyle:    plain | paper | kraft | watercolor | navygold | film | linen
+  deco:       tape | washi | doodles | leaves | goldCorners | blobs | bars
+  shapeSolo:  shape used for single photos / chapter pages (arch | circle | round)
+  cover:      framed | full | magazine
+*/
 export const THEMES = {
   classic: {
     name: 'קלאסי', desc: 'לבן נקי, מסגרות דקות, אלגנטי',
     bg: '#fbf9f4', text: '#2c2a26', accent: '#b08d57',
     font: 'Frank Ruhl Libre', titleWeight: 700, bodyWeight: 400,
     margin: 14, gap: 4, frame: 'line', radius: 0, shadow: false, tilt: 0,
-    fullBleedSolo: false, pageNumbers: true,
+    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true,
+  },
+  gallery: {
+    name: 'גלריה', desc: 'הרבה אוויר, תמונות כמו בתערוכה',
+    bg: '#ffffff', text: '#1d1d1b', accent: '#9a8f80',
+    font: 'Bellefair', titleWeight: 400, bodyWeight: 400,
+    margin: 22, gap: 7, frame: 'none', radius: 0, shadow: true, tilt: 0,
+    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true, labels: true,
+  },
+  gold: {
+    name: 'זהב חגיגי', desc: 'כחול לילה, מסגרות זהב ועיטורים',
+    bg: '#13233f', text: '#f3e7c4', accent: '#d8b866',
+    font: 'Frank Ruhl Libre', titleWeight: 700, bodyWeight: 400,
+    margin: 17, gap: 6, frame: 'gold', radius: 0, shadow: true, tilt: 0,
+    bgStyle: 'navygold', deco: ['goldCorners'], shapeSolo: 'arch', cover: 'framed', goldText: true,
+  },
+  boho: {
+    name: 'בוהו טבעי', desc: 'גווני אדמה, קשתות ועלים',
+    bg: '#f4ece1', text: '#5b4636', accent: '#c0714f', accent2: '#8a9a7b',
+    font: 'Suez One', titleWeight: 400, bodyWeight: 400,
+    margin: 15, gap: 5, frame: 'none', radius: 3, shadow: false, tilt: 0,
+    bgStyle: 'linen', deco: ['leaves'], shapeSolo: 'arch', archChance: 0.45, cover: 'framed', labels: true,
+  },
+  watercolor: {
+    name: 'צבעי מים', desc: 'כתמי צבע עדינים בצבעי התמונות',
+    bg: '#fdfbf7', text: '#3b3a4a', accent: 'auto',
+    font: 'Bellefair', titleWeight: 400, bodyWeight: 400,
+    margin: 15, gap: 6, frame: 'white', radius: 0, shadow: true, tilt: 1.2,
+    bgStyle: 'watercolor', deco: [], cover: 'framed', labels: true,
+  },
+  scrapbook: {
+    name: 'סקרפבוק', desc: 'נייר קראפט, וואשי טייפ וקשקושים',
+    bg: '#d8c3a0', text: '#3e2f22', accent: '#d2553f', accent2: '#3f7f8c',
+    font: 'Amatic SC', titleWeight: 700, bodyWeight: 700,
+    margin: 14, gap: 9, frame: 'white', radius: 0, shadow: true, tilt: 5,
+    bgStyle: 'kraft', deco: ['washi', 'doodles'], cover: 'framed', allowOverlap: true, labels: true,
+  },
+  vintage: {
+    name: 'וינטג׳ פולארויד', desc: 'נייר ישן, פולארואידים וסלוטייפ',
+    bg: '#eee3cc', text: '#4a3b2a', accent: '#a0522d',
+    font: 'Amatic SC', titleWeight: 700, bodyWeight: 700,
+    margin: 16, gap: 9, frame: 'polaroid', radius: 0, shadow: true, tilt: 4,
+    bgStyle: 'paper', deco: ['tape'], cover: 'framed', allowOverlap: true,
+  },
+  film: {
+    name: 'סרט קולנוע', desc: 'רקע כהה ופריימים של פילם',
+    bg: '#101010', text: '#f2efe8', accent: '#e8a33d',
+    font: 'Karantina', titleWeight: 700, bodyWeight: 400,
+    margin: 12, gap: 4, frame: 'film', radius: 0, shadow: false, tilt: 0,
+    bgStyle: 'film', deco: [], cover: 'full', fullBleedSolo: true, labels: true,
   },
   modern: {
     name: 'מודרני כהה', desc: 'רקע שחור, תמונות מלאות, דרמטי',
     bg: '#141414', text: '#f4f1ea', accent: '#e9b44c',
     font: 'Rubik', titleWeight: 700, bodyWeight: 300,
     margin: 9, gap: 2.5, frame: 'none', radius: 0, shadow: false, tilt: 0,
-    fullBleedSolo: true, pageNumbers: false,
-  },
-  vintage: {
-    name: 'וינטג׳ פולארויד', desc: 'נייר ישן, פולארואידים עקומים וסלוטייפ',
-    bg: '#eee3cc', text: '#4a3b2a', accent: '#a0522d',
-    font: 'Amatic SC', titleWeight: 700, bodyWeight: 700,
-    margin: 16, gap: 9, frame: 'polaroid', radius: 0, shadow: true, tilt: 4,
-    paper: true, tape: true, fullBleedSolo: false, allowOverlap: true,
+    bgStyle: 'plain', deco: [], cover: 'full', fullBleedSolo: true,
   },
   colorful: {
-    name: 'צבעוני', desc: 'צבעי רקע שנלקחים מהתמונות, פינות מעוגלות',
+    name: 'צבעוני', desc: 'צבעי רקע מהתמונות, פינות מעוגלות',
     bg: 'auto', text: '#2a2a2a', accent: 'auto',
     font: 'Secular One', titleWeight: 400, bodyWeight: 400,
     margin: 13, gap: 5, frame: 'none', radius: 5, shadow: true, tilt: 0,
-    blobs: true, fullBleedSolo: false,
+    bgStyle: 'plain', deco: ['blobs'], shapeSolo: 'round', cover: 'framed',
   },
   magazine: {
     name: 'מגזין', desc: 'כותרות ענק, פס צבע, תמונות עד הקצה',
     bg: '#ffffff', text: '#111111', accent: '#d9432b',
     font: 'Heebo', titleWeight: 900, bodyWeight: 400,
     margin: 10, gap: 3, frame: 'none', radius: 0, shadow: false, tilt: 0,
-    fullBleedSolo: true, pageNumbers: true, bars: true,
+    bgStyle: 'plain', deco: ['bars'], cover: 'magazine', fullBleedSolo: true, pageNumbers: true, labels: true,
   },
 };
+for (const [id, t] of Object.entries(THEMES)) t.id = id;
 
-export const FONTS = ['Frank Ruhl Libre', 'Rubik', 'Amatic SC', 'Secular One', 'Heebo'];
+export const FONTS = ['Frank Ruhl Libre', 'Rubik', 'Amatic SC', 'Secular One', 'Heebo', 'Bellefair', 'Suez One', 'Karantina'];
 
 export async function ensureFonts() {
   if (!document.fonts) return;
@@ -48,58 +99,110 @@ export async function ensureFonts() {
     document.fonts.load(`${w} 40px "${f}"`, 'אבגabc').catch(() => {}))));
 }
 
+export const BG_SWATCHES = ['#ffffff', '#fbf9f4', '#f4ece1', '#eee3cc', '#e8eef0', '#f6e1e1', '#e3ecdf', '#13233f', '#2b2b2b', '#101010'];
+
 // ---------- color helpers ----------
 const mix = (c, d, t) => c.map((v, i) => Math.round(v * (1 - t) + d[i] * t));
-const css = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+const css = (c, a = 1) => a === 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const lum = c => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
 
+export function effectiveTheme(page, albumTheme) {
+  return (page.style && THEMES[page.style]) || albumTheme;
+}
+
 function pageColors(theme, page, photosById) {
-  if (theme.bg !== 'auto') return { bg: theme.bg, text: theme.text, accent: theme.accent };
-  const p = photosById.get(page.photos[0]);
-  let base = p ? p.color : [200, 170, 140];
-  // make it pleasant: boost saturation slightly and push towards pastel
-  const pastel = mix(base, [255, 255, 255], 0.66);
-  const deep = mix(base, [20, 20, 30], 0.45);
-  return { bg: css(pastel), text: css(mix(base, [15, 15, 20], 0.75)), accent: css(deep), accentRGB: deep };
+  const first = photosById.get(page.photos?.[0]);
+  const base = first ? first.color : [200, 170, 140];
+  let c;
+  if (theme.bg === 'auto') {
+    const deep = mix(base, [20, 20, 30], 0.45);
+    c = { bg: css(mix(base, [255, 255, 255], 0.66)), text: css(mix(base, [15, 15, 20], 0.75)), accent: css(deep) };
+  } else {
+    c = { bg: theme.bg, text: theme.text, accent: theme.accent === 'auto' ? css(mix(base, [40, 40, 60], 0.35)) : theme.accent };
+  }
+  c.accent2 = theme.accent2 || c.accent;
+  if (page.bg) {
+    c.bg = page.bg;
+    const dark = lum(hex2rgb(page.bg)) < 0.45;
+    if (dark !== (lum(hex2rgb(toHex(theme.bg === 'auto' ? '#ffffff' : theme.bg))) < 0.45)) {
+      c.text = dark ? '#f4f1ea' : '#2a2622';
+    }
+  }
+  c.dark = lum(hex2rgb(toHex(c.bg))) < 0.45;
+  return c;
+}
+function toHex(c) {
+  if (c.startsWith('#')) return c;
+  const m = c.match(/\d+/g) || [255, 255, 255];
+  return '#' + m.slice(0, 3).map(v => (+v).toString(16).padStart(2, '0')).join('');
+}
+
+function goldGradient(ctx, x, y, w, h) {
+  const g = ctx.createLinearGradient(x, y, x + w, y + h);
+  g.addColorStop(0, '#8a6a2f'); g.addColorStop(0.25, '#e9d08c'); g.addColorStop(0.5, '#b38d3e');
+  g.addColorStop(0.75, '#f5e4a9'); g.addColorStop(1, '#9a7833');
+  return g;
 }
 
 // ---------- drawing primitives ----------
-function roundRectPath(ctx, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
+function shapePath(ctx, shape, x, y, w, h, r = 0) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  if (shape === 'circle') {
+    const d = Math.min(w, h);
+    ctx.ellipse(x + w / 2, y + h / 2, d / 2, d / 2, 0, 0, Math.PI * 2);
+  } else if (shape === 'oval') {
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  } else if (shape === 'arch') {
+    const rr = Math.min(w / 2, h * 0.6);
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x, y + rr);
+    ctx.arc(x + w / 2, y + rr, w / 2, Math.PI, 0);
+    if (rr < w / 2) { /* wide arch fallback */ }
+    ctx.lineTo(x + w, y + h);
+    ctx.closePath();
+  } else {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+}
+// circles are drawn as a centered square
+function shapeBox(shape, x, y, w, h) {
+  if (shape !== 'circle') return { x, y, w, h };
+  const d = Math.min(w, h);
+  return { x: x + (w - d) / 2, y: y + (h - d) / 2, w: d, h: d };
 }
 
-function drawCover(ctx, img, photo, x, y, w, h) {
+function drawCover(ctx, img, photo, x, y, w, h, crop) {
   const iw = img.width, ih = img.height;
-  const s = Math.max(w / iw, h / ih);
+  const zoom = Math.max(1, crop?.zoom || 1);
+  const s = Math.max(w / iw, h / ih) * zoom;
   const sw = w / s, sh = h / s;
-  const f = photo?.focal || { x: 0.5, y: 0.5 };
+  const f = crop && crop.x != null ? crop : (photo?.focal || { x: 0.5, y: 0.5 });
   const sx = Math.max(0, Math.min(iw - sw, f.x * iw - sw / 2));
   const sy = Math.max(0, Math.min(ih - sh, f.y * ih - sh / 2));
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
 const noiseCache = new Map();
-function paperPattern(ctx, scale) {
-  const key = Math.round(scale * 10);
+function noisePattern(ctx, scale, tint = [1, 0.92, 0.8], alpha = 26, seed = 7) {
+  const key = `${Math.round(scale * 10)}|${tint}|${alpha}|${seed}`;
   if (!noiseCache.has(key)) {
     const size = Math.round(160 * Math.max(1, scale / 4));
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const x = c.getContext('2d');
     const d = x.createImageData(size, size);
-    const r = rng(7);
+    const r = rng(seed);
     for (let i = 0; i < d.data.length; i += 4) {
       const v = 120 + r() * 100;
-      d.data[i] = v; d.data[i + 1] = v * 0.92; d.data[i + 2] = v * 0.8;
-      d.data[i + 3] = r() * 26;
+      d.data[i] = v * tint[0]; d.data[i + 1] = v * tint[1]; d.data[i + 2] = v * tint[2];
+      d.data[i + 3] = r() * alpha;
     }
     x.putImageData(d, 0, 0);
     noiseCache.set(key, c);
@@ -117,89 +220,209 @@ function fitFont(ctx, text, weight, family, size, maxW) {
   return s;
 }
 
-function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 'center', shadow = false, baseline = 'middle' }) {
+function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 'center', shadow = false, baseline = 'middle', gold = false }) {
   if (!text) return 0;
   ctx.save();
   ctx.direction = 'rtl';
   ctx.textAlign = align;
   ctx.textBaseline = baseline;
   const s = fitFont(ctx, text, weight, family, size, maxW);
-  ctx.fillStyle = color;
+  if (gold) {
+    const w = ctx.measureText(text).width;
+    const x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+    ctx.fillStyle = goldGradient(ctx, x0, y - s / 2, w, s);
+  } else ctx.fillStyle = color;
   if (shadow) { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = s * 0.35; ctx.shadowOffsetY = s * 0.05; }
   ctx.fillText(text, x, y);
   ctx.restore();
   return s;
 }
 
-// Draws one photo inside a slot, with the theme's frame/tilt/shadow/tape.
-function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
-  let { x, y, w, h } = box;
-  const tilt = theme.tilt && !opts.noTilt ? (r() * 2 - 1) * theme.tilt * Math.PI / 180 : 0;
+// ---------- decorations ----------
+function drawTape(ctx, x, y, w, h, k, r, washi, colors) {
+  const tw = Math.min(w, h) * (washi ? 0.36 : 0.32), th = tw * 0.27;
+  const corner = washi && r() < 0.5;
   ctx.save();
-  if (tilt) {
-    const shrink = 0.9;
-    ctx.translate(x + w / 2, y + h / 2);
-    ctx.rotate(tilt);
-    w *= shrink; h *= shrink;
-    x = -w / 2; y = -h / 2;
-  }
-  if (theme.frame === 'polaroid') {
-    const b = Math.min(w, h) * 0.05;
-    const bottom = Math.min(w, h) * 0.16;
-    ctx.save();
-    ctx.shadowColor = 'rgba(40,25,10,0.35)';
-    ctx.shadowBlur = 3 * k; ctx.shadowOffsetY = 1.2 * k; ctx.shadowOffsetX = 0.6 * k;
-    ctx.fillStyle = '#fdfcf8';
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
-    if (img) drawCover(ctx, img, photo, x + b, y + b, w - 2 * b, h - b - bottom);
-    ctx.strokeStyle = 'rgba(0,0,0,0.06)'; ctx.lineWidth = 0.2 * k;
-    ctx.strokeRect(x + b, y + b, w - 2 * b, h - b - bottom);
+  if (corner) {
+    ctx.translate(x + (r() < 0.5 ? 0 : w), y);
+    ctx.rotate((r() < 0.5 ? -1 : 1) * Math.PI / 4);
   } else {
-    const rad = (theme.radius || 0) * k;
-    if (theme.shadow && !opts.full) {
+    ctx.translate(x + w / 2 + (r() - 0.5) * w * 0.2, y + th * 0.1);
+    ctx.rotate((r() - 0.5) * 0.3);
+  }
+  ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 0.6 * k;
+  if (washi) {
+    const palette = [colors.accent, colors.accent2, '#e9c46a', '#f4a6a6', '#9cc5a1'];
+    const base = palette[Math.floor(r() * palette.length)];
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = base;
+    ctx.fillRect(-tw / 2, -th / 2, tw, th);
+    ctx.shadowColor = 'transparent';
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = '#ffffff';
+    const pattern = Math.floor(r() * 3);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(-tw / 2, -th / 2, tw, th); ctx.clip();
+    if (pattern === 0) for (let i = -tw; i < tw; i += th * 0.6) { ctx.beginPath(); ctx.moveTo(i, -th); ctx.lineTo(i + th, th); ctx.lineTo(i + th * 1.25, th); ctx.lineTo(i + th * 0.25, -th); ctx.fill(); }
+    else if (pattern === 1) for (let i = -tw / 2 + th * 0.3; i < tw / 2; i += th * 0.55) for (let j = -th / 4; j <= th / 4; j += th / 2) { ctx.beginPath(); ctx.arc(i + (j > 0 ? th * 0.27 : 0), j, th * 0.09, 0, 7); ctx.fill(); }
+    else ctx.fillRect(-tw / 2, -th * 0.1, tw, th * 0.2);
+    ctx.restore();
+    // torn ends
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.fillStyle = 'rgba(245, 235, 200, 0.72)';
+    ctx.fillRect(-tw / 2, -th / 2, tw, th);
+  }
+  ctx.restore();
+}
+
+function drawLeafBranch(ctx, x, y, len, angle, k, colors, r) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.strokeStyle = colors.accent2;
+  ctx.lineWidth = 0.45 * k;
+  ctx.lineCap = 'round';
+  const bend = len * 0.18;
+  ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(len * 0.5, -bend, len, 0); ctx.stroke();
+  const n = 7;
+  for (let i = 1; i <= n; i++) {
+    const t = i / (n + 1);
+    const px = len * t, py = -bend * 4 * t * (1 - t) * 0.5;
+    const size = len * (0.13 - t * 0.05);
+    for (const side of [-1, 1]) {
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.25)';
-      ctx.shadowBlur = 3.5 * k; ctx.shadowOffsetY = 1.2 * k;
-      ctx.fillStyle = '#fff';
-      roundRectPath(ctx, x, y, w, h, rad); ctx.fill();
+      ctx.translate(px, py);
+      ctx.rotate(side * (0.75 + r() * 0.2) - 0.15);
+      ctx.fillStyle = (i + (side > 0 ? 1 : 0)) % 4 === 0 ? colors.accent : colors.accent2;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.ellipse(size * 0.9, 0, size, size * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
     }
-    ctx.save();
-    roundRectPath(ctx, x, y, w, h, opts.full ? 0 : rad);
-    ctx.clip();
-    if (img) drawCover(ctx, img, photo, x, y, w, h);
-    else { ctx.fillStyle = '#ccc'; ctx.fillRect(x, y, w, h); }
-    ctx.restore();
-    if (theme.frame === 'line' && !opts.full) {
-      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.25 * k;
-      ctx.strokeRect(x + 0.1 * k, y + 0.1 * k, w - 0.2 * k, h - 0.2 * k);
-    }
   }
-  if (theme.tape && r() < 0.75) {
-    const tw = Math.min(w, h) * 0.32, th = tw * 0.28;
+  ctx.fillStyle = colors.accent2;
+  ctx.beginPath(); ctx.ellipse(len + len * 0.07, 0, len * 0.09, len * 0.035, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawDoodle(ctx, kind, x, y, s, color, k) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.strokeStyle = color; ctx.fillStyle = color;
+  ctx.lineWidth = 0.45 * k; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  if (kind === 'heart') {
+    ctx.moveTo(0, s * 0.35);
+    ctx.bezierCurveTo(-s * 0.9, -s * 0.2, -s * 0.35, -s * 0.85, 0, -s * 0.3);
+    ctx.bezierCurveTo(s * 0.35, -s * 0.85, s * 0.9, -s * 0.2, 0, s * 0.35);
+    ctx.stroke();
+  } else if (kind === 'star') {
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? s * 0.22 : s * 0.55;
+      i ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    ctx.closePath(); ctx.stroke();
+  } else if (kind === 'swirl') {
+    for (let a = 0; a < Math.PI * 5; a += 0.2) {
+      const rr = s * 0.05 * a;
+      a ? ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : ctx.moveTo(0, 0);
+    }
+    ctx.stroke();
+  } else if (kind === 'dots') {
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(i * s * 0.4 - s * 0.4, 0, s * 0.07, 0, 7); ctx.fill(); }
+  } else if (kind === 'arrow') {
+    ctx.moveTo(-s * 0.6, s * 0.2); ctx.quadraticCurveTo(0, -s * 0.5, s * 0.6, 0);
+    ctx.moveTo(s * 0.6, 0); ctx.lineTo(s * 0.3, -s * 0.12); ctx.moveTo(s * 0.6, 0); ctx.lineTo(s * 0.38, s * 0.2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawGoldCorners(ctx, x, y, w, h, k) {
+  ctx.save();
+  ctx.strokeStyle = goldGradient(ctx, x, y, w, h);
+  ctx.fillStyle = goldGradient(ctx, x, y, w, h);
+  ctx.lineWidth = 0.35 * k;
+  const L = 12 * k;
+  const corners = [[x, y, 1, 1], [x + w, y, -1, 1], [x, y + h, 1, -1], [x + w, y + h, -1, -1]];
+  for (const [cx, cy, sx, sy] of corners) {
+    ctx.beginPath();
+    ctx.moveTo(cx + sx * L, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + sy * L);
+    ctx.moveTo(cx + sx * 2.2 * k, cy + sy * 2.2 * k);
+    ctx.quadraticCurveTo(cx + sx * 7 * k, cy + sy * 1 * k, cx + sx * 9 * k, cy + sy * 4 * k);
+    ctx.moveTo(cx + sx * 2.2 * k, cy + sy * 2.2 * k);
+    ctx.quadraticCurveTo(cx + sx * 1 * k, cy + sy * 7 * k, cx + sx * 4 * k, cy + sy * 9 * k);
+    ctx.stroke();
     ctx.save();
-    ctx.translate(x + w / 2 + (r() - 0.5) * w * 0.2, y + th * 0.15);
-    ctx.rotate((r() - 0.5) * 0.35);
-    ctx.fillStyle = 'rgba(245, 235, 200, 0.72)';
-    ctx.shadowColor = 'rgba(0,0,0,0.12)'; ctx.shadowBlur = 0.6 * k;
-    ctx.fillRect(-tw / 2, -th / 2, tw, th);
+    ctx.translate(cx + sx * 2.2 * k, cy + sy * 2.2 * k); ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-0.9 * k, -0.9 * k, 1.8 * k, 1.8 * k);
     ctx.restore();
   }
   ctx.restore();
 }
 
-function drawBackground(ctx, W, H, colors, theme, k, r) {
+function drawBackground(ctx, W, H, colors, theme, k, r, env, page) {
   ctx.fillStyle = colors.bg;
   ctx.fillRect(0, 0, W, H);
-  if (theme.paper) {
-    ctx.fillStyle = paperPattern(ctx, k);
+  const style = theme.bgStyle;
+  if (style === 'paper' || style === 'kraft') {
+    ctx.fillStyle = noisePattern(ctx, k, style === 'kraft' ? [0.95, 0.8, 0.6] : [1, 0.92, 0.8], style === 'kraft' ? 40 : 26);
     ctx.fillRect(0, 0, W, H);
     const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
-    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(90,60,20,0.22)');
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, style === 'kraft' ? 'rgba(80,50,20,0.25)' : 'rgba(90,60,20,0.22)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (style === 'kraft') {
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      const step = 6 * k;
+      for (let yy = step / 2; yy < H; yy += step) for (let xx = step / 2; xx < W; xx += step) { ctx.beginPath(); ctx.arc(xx, yy, 0.22 * k, 0, 7); ctx.fill(); }
+    }
+  } else if (style === 'linen') {
+    ctx.save();
+    ctx.globalAlpha = 0.05;
+    ctx.strokeStyle = colors.dark ? '#fff' : '#6b5440';
+    ctx.lineWidth = 0.15 * k;
+    for (let i = 0; i < W + H; i += 0.9 * k) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i - H, H); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle = noisePattern(ctx, k, [1, 0.95, 0.88], 14, 3);
+    ctx.fillRect(0, 0, W, H);
+  } else if (style === 'watercolor') {
+    const cols = (page.photos || []).map(id => env.photosById.get(id)?.color).filter(Boolean);
+    if (!cols.length) cols.push([170, 190, 210], [220, 180, 170]);
+    const blobs = 3 + Math.floor(r() * 2);
+    for (let b = 0; b < blobs; b++) {
+      const c = mix(cols[b % cols.length], [255, 255, 255], 0.35);
+      const cx = (r() < 0.5 ? 0.12 + r() * 0.3 : 0.58 + r() * 0.3) * W;
+      const cy = (b / blobs + r() * 0.25) * H;
+      const R = (0.22 + r() * 0.18) * Math.min(W, H);
+      for (let i = 0; i < 9; i++) {
+        const ox = (r() - 0.5) * R * 0.7, oy = (r() - 0.5) * R * 0.7, rr = R * (0.45 + r() * 0.5);
+        const g = ctx.createRadialGradient(cx + ox, cy + oy, rr * 0.1, cx + ox, cy + oy, rr);
+        g.addColorStop(0, css(c, 0.16)); g.addColorStop(0.75, css(c, 0.1)); g.addColorStop(0.95, css(mix(c, [0, 0, 0], 0.15), 0.12)); g.addColorStop(1, css(c, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx + ox, cy + oy, rr, 0, 7); ctx.fill();
+      }
+    }
+    ctx.fillStyle = noisePattern(ctx, k, [1, 0.97, 0.92], 16, 11);
+    ctx.fillRect(0, 0, W, H);
+  } else if (style === 'navygold') {
+    const g = ctx.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.1, W / 2, H / 2, Math.max(W, H) * 0.8);
+    g.addColorStop(0, 'rgba(255,255,255,0.07)'); g.addColorStop(1, 'rgba(0,0,0,0.3)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = noisePattern(ctx, k, [0.8, 0.85, 1], 12, 5);
+    ctx.fillRect(0, 0, W, H);
+    const B = (env.bleed || 0) * k;
+    const PW = env.format.w * k, PH = env.format.h * k;
+    const i1 = 6 * k, i2 = 7.6 * k;
+    ctx.strokeStyle = goldGradient(ctx, 0, 0, W, H);
+    ctx.lineWidth = 0.55 * k; ctx.strokeRect(B + i1, B + i1, PW - 2 * i1, PH - 2 * i1);
+    ctx.lineWidth = 0.2 * k; ctx.strokeRect(B + i2, B + i2, PW - 2 * i2, PH - 2 * i2);
+  } else if (style === 'film') {
+    ctx.fillStyle = noisePattern(ctx, k, [1, 1, 1], 18, 9);
+    ctx.fillRect(0, 0, W, H);
   }
-  if (theme.blobs) {
+  if (theme.deco.includes('blobs')) {
     ctx.save();
     ctx.globalAlpha = 0.22;
     ctx.fillStyle = colors.accent;
@@ -217,13 +440,161 @@ function drawBackground(ctx, W, H, colors, theme, k, r) {
   }
 }
 
+// decorations drawn on top of the photos, kept to the page margins
+function drawOverlayDeco(ctx, theme, colors, g, r, page) {
+  const { B, PW, PH, M, k } = g;
+  if (theme.deco.includes('leaves')) {
+    const L = Math.min(PW, PH) * 0.2;
+    const inset = Math.min(M * 0.3, 4 * k);
+    // branches run along the page edges, inside the margin
+    const corners = [
+      [B + PW - inset, B + inset, Math.PI - 0.15],
+      [B + inset, B + PH - inset, -0.15],
+      [B + inset, B + inset, 0.15],
+      [B + PW - inset, B + PH - inset, Math.PI + 0.15],
+    ];
+    const pick = Math.floor(r() * 2);
+    for (const idx of [pick, pick + 2]) {
+      const [x, y, a] = corners[idx];
+      drawLeafBranch(ctx, x, y, L, a + (r() - 0.5) * 0.06, k, colors, r);
+    }
+  }
+  if (theme.deco.includes('goldCorners')) {
+    const i3 = 9.5 * k;
+    drawGoldCorners(ctx, B + i3, B + i3, PW - 2 * i3, PH - 2 * i3, k);
+  }
+  if (theme.deco.includes('doodles') && page.type !== 'cover') {
+    const kinds = ['heart', 'star', 'swirl', 'dots', 'arrow'];
+    const n = 2 + Math.floor(r() * 3);
+    for (let i = 0; i < n; i++) {
+      const edge = Math.floor(r() * 4);
+      const along = 0.1 + r() * 0.8;
+      const s = (4 + r() * 3) * k;
+      const pos = [
+        [B + along * PW, B + M * 0.5], [B + along * PW, B + PH - M * 0.5],
+        [B + M * 0.5, B + along * PH], [B + PW - M * 0.5, B + along * PH],
+      ][edge];
+      drawDoodle(ctx, kinds[Math.floor(r() * kinds.length)], pos[0], pos[1], s, i % 2 ? colors.accent : colors.accent2, k);
+    }
+  }
+}
+
+// Draws one photo inside a slot, with the theme's frame/tilt/shadow/tape.
+function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
+  let { x, y, w, h } = box;
+  const tiltDeg = opts.noTilt ? 0 : (opts.tilt != null ? opts.tilt : (r() * 2 - 1) * (theme.tilt || 0));
+  const tilt = tiltDeg * Math.PI / 180;
+  const shape = opts.full ? 'rect' : (opts.shape || 'rect');
+  const colors = opts.colors || {};
+  ctx.save();
+  if (tilt) {
+    const shrink = 1 - Math.min(0.12, Math.abs(tiltDeg) * 0.02);
+    ctx.translate(x + w / 2, y + h / 2);
+    ctx.rotate(tilt);
+    w *= shrink; h *= shrink;
+    x = -w / 2; y = -h / 2;
+  }
+  ({ x, y, w, h } = shapeBox(shape, x, y, w, h));
+  const frame = opts.full ? 'none' : theme.frame;
+  const rad = (theme.radius || 0) * k;
+  const placeholder = () => { ctx.fillStyle = colors.dark ? '#333' : '#d9d4cc'; ctx.fill(); };
+
+  if (frame === 'polaroid') {
+    const b = Math.min(w, h) * 0.05, bottom = Math.min(w, h) * 0.16;
+    ctx.save();
+    ctx.shadowColor = 'rgba(40,25,10,0.35)'; ctx.shadowBlur = 3 * k; ctx.shadowOffsetY = 1.2 * k; ctx.shadowOffsetX = 0.6 * k;
+    ctx.fillStyle = '#fdfcf8'; ctx.fillRect(x, y, w, h);
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x + b, y + b, w - 2 * b, h - b - bottom); ctx.clip();
+    if (img) drawCover(ctx, img, photo, x + b, y + b, w - 2 * b, h - b - bottom, opts.crop); else placeholder();
+    ctx.restore();
+    if (opts.caption) drawText(ctx, opts.caption, x + w / 2, y + h - bottom / 2, { size: bottom * 0.5, weight: 700, family: 'Amatic SC', color: '#3a3a3a', maxW: w * 0.9 });
+  } else if (frame === 'film') {
+    const sp = Math.min(w, h) * 0.1;
+    ctx.fillStyle = '#0b0b0b';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#e9e4da';
+    const holeW = sp * 0.42, holeH = sp * 0.5;
+    const n = Math.max(3, Math.round(w / (holeW * 2.2)));
+    for (let i = 0; i < n; i++) {
+      const hx = x + (i + 0.5) * (w / n) - holeW / 2;
+      for (const hy of [y + sp * 0.25, y + h - sp * 0.75]) { shapePath(ctx, 'round', hx, hy, holeW, holeH, holeW * 0.25); ctx.fill(); }
+    }
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x + sp * 0.25, y + sp, w - sp * 0.5, h - 2 * sp); ctx.clip();
+    if (img) drawCover(ctx, img, photo, x + sp * 0.25, y + sp, w - sp * 0.5, h - 2 * sp, opts.crop); else placeholder();
+    ctx.restore();
+  } else {
+    const border = frame === 'white' ? Math.max(1.4 * k, Math.min(w, h) * 0.035) : 0;
+    if ((theme.shadow || frame === 'white' || frame === 'gold') && !opts.full) {
+      ctx.save();
+      ctx.shadowColor = colors.dark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = 3.5 * k; ctx.shadowOffsetY = 1.2 * k;
+      ctx.fillStyle = frame === 'white' ? '#fffefb' : '#000';
+      shapePath(ctx, shape, x, y, w, h, rad); ctx.fill();
+      ctx.restore();
+    }
+    ctx.save();
+    if (border) {
+      ctx.fillStyle = '#fffefb';
+      shapePath(ctx, shape, x, y, w, h, rad); ctx.fill();
+    }
+    const ix = x + border, iy = y + border, iw = w - 2 * border, ih = h - 2 * border;
+    shapePath(ctx, shape, ix, iy, iw, ih, opts.full ? 0 : Math.max(0, rad - border));
+    ctx.clip();
+    if (img) drawCover(ctx, img, photo, ix, iy, iw, ih, opts.crop); else placeholder();
+    ctx.restore();
+    if (frame === 'line' && !opts.full) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.25 * k;
+      shapePath(ctx, shape, x + 0.1 * k, y + 0.1 * k, w - 0.2 * k, h - 0.2 * k, rad); ctx.stroke();
+    }
+    if (frame === 'gold' && !opts.full) {
+      ctx.strokeStyle = goldGradient(ctx, x, y, w, h);
+      ctx.lineWidth = 0.9 * k;
+      shapePath(ctx, shape, x, y, w, h, rad); ctx.stroke();
+      ctx.lineWidth = 0.25 * k;
+      const o = 1.8 * k;
+      shapePath(ctx, shape, x - o, y - o, w + 2 * o, h + 2 * o, rad ? rad + o : 0); ctx.stroke();
+    }
+  }
+  if (!opts.full && theme.deco.includes('tape') && r() < 0.75) drawTape(ctx, x, y, w, h, k, r, false, colors);
+  if (!opts.full && theme.deco.includes('washi') && r() < 0.8) drawTape(ctx, x, y, w, h, k, r, true, colors);
+  ctx.restore();
+}
+
+function label(ctx, text, theme, colors, g, opts = {}) {
+  if (!text) return;
+  const { B, PW, M, k } = g;
+  const fam = theme.font;
+  const y = B + Math.max(M * 0.5, 4 * k);
+  const size = Math.max(3.8 * k, Math.min(M * 0.45, 5.5 * k));
+  if (theme.id === 'scrapbook') {
+    ctx.save();
+    ctx.font = `700 ${size * 1.2}px "${fam}"`;
+    const w = ctx.measureText(text).width + size * 1.6;
+    const x = B + PW - M - w;
+    ctx.translate(x + w / 2, y); ctx.rotate(-0.03);
+    ctx.fillStyle = '#fbf6ea'; ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 1.5 * k;
+    ctx.fillRect(-w / 2, -size * 0.8, w, size * 1.6);
+    ctx.restore();
+    drawText(ctx, text, x + w / 2, y, { size: size * 1.2, weight: 700, family: fam, color: colors.text, maxW: PW * 0.6 });
+    return;
+  }
+  const opt = { size, weight: theme.bodyWeight, family: fam, color: theme.id === 'magazine' ? colors.accent : colors.text, maxW: PW - 2 * M, align: 'right', gold: theme.goldText };
+  drawText(ctx, theme.id === 'magazine' ? text.toUpperCase() : text, B + PW - M, y, opt);
+}
+
 /**
- * Render a page.
+ * Render a page. Returns { slots: [{x,y,w,h,index}] } in canvas pixels.
  * env: { format:{w,h} (mm), bleed (mm), pxPerMm, theme, album, photosById,
  *        getImage(photo, wPx, hPx) -> Promise<ImageBitmap>, pageNumber }
  */
 export async function renderPage(canvas, page, env) {
-  const { format, theme, photosById, pxPerMm: k } = env;
+  const { format, photosById, pxPerMm: k } = env;
+  let theme = effectiveTheme(page, env.theme);
+  // gold lettering is unreadable on a light background the user picked
+  if (theme.goldText && page.bg && lum(hex2rgb(toHex(page.bg))) > 0.6) theme = { ...theme, goldText: false, text: '#2c2a26', accent: '#9a7833' };
   const bleed = env.bleed || 0;
   const W = Math.round((format.w + 2 * bleed) * k);
   const H = Math.round((format.h + 2 * bleed) * k);
@@ -232,101 +603,128 @@ export async function renderPage(canvas, page, env) {
   ctx.imageSmoothingQuality = 'high';
   const r = rng(Math.floor((page.variant || 0.5) * 1e9));
   const colors = pageColors(theme, page, photosById);
-  const B = bleed * k;            // bleed in px
-  const PW = format.w * k, PH = format.h * k; // trim size in px
+  const B = bleed * k;
+  const PW = format.w * k, PH = format.h * k;
   const M = theme.margin * k;
   const fam = theme.font;
+  const g = { W, H, B, PW, PH, M, k, r, colors };
+  const slots = [];
 
-  drawBackground(ctx, W, H, colors, theme, k, r);
+  drawBackground(ctx, W, H, colors, theme, k, r, env, page);
 
   const photoOf = id => photosById.get(id);
   const load = async (p, w, h) => {
     if (!p) return null;
     try { return await env.getImage(p, w, h); } catch (e) { console.warn('image failed', e); return null; }
   };
+  const cropOf = i => page.crops?.[page.photos?.[i]]; // crop/zoom is stored per photo
+  g.load = load; g.photoOf = photoOf; g.slots = slots; g.cropOf = cropOf;
 
   if (page.type === 'photos') {
     const tpl = templateById(page.template);
-    if (!tpl) return;
+    if (!tpl) return { slots };
     const gap = theme.gap * k;
     if (tpl.full) {
       const p = photoOf(page.photos[0]);
       const img = await load(p, W, H);
-      drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true });
+      drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true, crop: cropOf(0), colors });
+      slots.push({ x: 0, y: 0, w: W, h: H, index: 0 });
     } else {
       const cx = B + M - gap / 2, cy = B + M - gap / 2;
       const cw = PW - 2 * M + gap, ch = PH - 2 * M + gap;
-      const imgs = await Promise.all(tpl.slots.map((s, i) => {
-        const p = photoOf(page.photos[i]);
-        return load(p, s.w * cw, s.h * ch);
-      }));
+      const imgs = await Promise.all(tpl.slots.map((s, i) => load(photoOf(page.photos[i]), s.w * cw, s.h * ch)));
       tpl.slots.forEach((s, i) => {
         const p = photoOf(page.photos[i]);
-        // mirror horizontally: Hebrew albums read right-to-left
-        const sx = 1 - s.x - s.w;
+        const sx = 1 - s.x - s.w; // mirror: Hebrew albums read right-to-left
         const box = { x: cx + sx * cw + gap / 2, y: cy + s.y * ch + gap / 2, w: s.w * cw - gap, h: s.h * ch - gap };
-        drawPhoto(ctx, imgs[i], p, box, theme, k, r);
+        let shape = page.shapes?.[i];
+        if (!shape) {
+          const portraitish = box.w / box.h < 0.95;
+          if (theme.shapeSolo && tpl.slots.length === 1) shape = theme.shapeSolo;
+          else if (theme.archChance && portraitish && r() < theme.archChance) shape = 'arch';
+          else if (theme.shapeSolo === 'round') shape = 'round';
+        }
+        drawPhoto(ctx, imgs[i], p, box, theme, k, r, { shape, crop: cropOf(i), colors, caption: theme.frame === 'polaroid' ? page.captions?.[i] : null });
+        slots.push({ ...box, index: i });
       });
     }
+    drawOverlayDeco(ctx, theme, colors, g, r, page);
+    if (page.label && theme.labels && !tpl.full) label(ctx, page.label, theme, colors, g);
     if (page.caption) {
       drawText(ctx, page.caption, B + PW / 2, B + PH - M * 0.45, {
-        size: 5 * k, weight: theme.bodyWeight, family: fam, color: colors.text, maxW: PW - 2 * M,
-        shadow: tpl.full, ...(tpl.full ? { color: '#fff' } : {}),
+        size: Math.min(5.5 * k, M * 0.42), weight: theme.bodyWeight, family: fam, maxW: PW - 2 * M,
+        color: tpl.full ? '#fff' : colors.text, shadow: tpl.full, gold: theme.goldText && !tpl.full,
+      });
+    }
+    if (theme.deco.includes('bars') && !tpl.full) {
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(B + PW - M - 14 * k, B + M * 0.4, 14 * k, 1.2 * k);
+    }
+    if (theme.pageNumbers && env.pageNumber && !tpl.full) {
+      const left = env.pageNumber % 2 === 0;
+      drawText(ctx, String(env.pageNumber), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * 0.45, {
+        size: 3.2 * k, weight: 400, family: fam, color: colors.text, maxW: 20 * k,
       });
     }
   } else if (page.type === 'cover') {
-    await renderCover(ctx, page, env, { W, H, B, PW, PH, M, k, r, colors, load, photoOf });
+    await renderCover(ctx, page, env, theme, g);
   } else if (page.type === 'chapter') {
-    await renderChapter(ctx, page, env, { W, H, B, PW, PH, M, k, r, colors, load, photoOf });
+    await renderChapter(ctx, page, env, theme, g);
   } else if (page.type === 'end') {
-    renderEnd(ctx, page, env, { W, H, B, PW, PH, M, k, r, colors });
+    renderEnd(ctx, page, env, theme, g);
   }
+  return { slots };
+}
 
-  if (theme.bars && page.type === 'photos' && !templateById(page.template)?.full) {
-    ctx.fillStyle = colors.accent;
-    ctx.fillRect(B + PW - M - 14 * k, B + M * 0.4, 14 * k, 1.2 * k);
-  }
-  if (theme.pageNumbers && env.pageNumber && page.type === 'photos' && !templateById(page.template)?.full) {
-    const left = env.pageNumber % 2 === 0;
-    drawText(ctx, String(env.pageNumber), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * 0.45, {
-      size: 3.2 * k, weight: 400, family: fam, color: colors.text, maxW: 20 * k,
-    });
+// a framed hero photo with title underneath (used by most covers/chapters)
+async function framedHero(ctx, page, theme, g, { title, sub, titleScale = 1, top = 1.4 }) {
+  const { B, PW, PH, M, k, r, colors, load, photoOf, slots, cropOf } = g;
+  const p = photoOf(page.photos[0]);
+  const fam = theme.font;
+  let shape = page.shapes?.[0] || theme.shapeSolo || 'rect';
+  const polaroid = theme.frame === 'polaroid';
+  let bw, bh;
+  if (polaroid) { bw = PW * 0.66; bh = Math.min(bw * 1.12, PH * 0.66); }
+  else if (shape === 'arch' || shape === 'circle') { bw = Math.min(PW * 0.62, PH * 0.5); bh = shape === 'circle' ? bw : bw * 1.18; }
+  else { bw = PW - 2 * M * top; bh = PH * 0.6; }
+  const bx = B + (PW - bw) / 2, by = B + M * top;
+  const img = await load(p, bw, bh);
+  drawPhoto(ctx, img, p, { x: bx, y: by, w: bw, h: bh }, theme, k, r, { shape, noTilt: !polaroid && theme.id !== 'scrapbook', crop: cropOf(0), colors });
+  slots.push({ x: bx, y: by, w: bw, h: bh, index: 0 });
+  drawOverlayDeco(ctx, theme, colors, g, r, page);
+  const rest = PH - (by - B) - bh;
+  const ty = by + bh + rest * 0.4;
+  const big = polaroid || theme.font === 'Amatic SC' || theme.font === 'Karantina';
+  const ts = drawText(ctx, title, B + PW / 2, ty, { size: PH * (big ? 0.11 : 0.075) * titleScale, weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85, gold: theme.goldText });
+  if (sub) drawText(ctx, sub, B + PW / 2, ty + ts * 0.62 + PH * 0.035, { size: PH * (big ? 0.05 : 0.038), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
+  else if (title) {
+    const oy = ty + ts * 0.62 + PH * 0.02;
+    ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 10 * k, oy, 20 * k, 1) : colors.accent;
+    ctx.fillRect(B + PW / 2 - 10 * k, oy, 20 * k, 0.4 * k);
+    ctx.beginPath(); ctx.arc(B + PW / 2, oy + 0.2 * k, 1.1 * k, 0, Math.PI * 2); ctx.fill();
   }
 }
 
-async function renderCover(ctx, page, env, g) {
-  const { theme, album } = env;
-  const { W, H, B, PW, PH, M, k, r, colors, load, photoOf } = g;
+async function fullBleedHero(ctx, page, theme, g) {
+  const { W, H, k, r, colors, load, photoOf, slots, cropOf } = g;
   const p = photoOf(page.photos[0]);
+  const img = await load(p, W, H);
+  drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true, crop: cropOf(0), colors });
+  slots.push({ x: 0, y: 0, w: W, h: H, index: 0 });
+}
+
+async function renderCover(ctx, page, env, theme, g) {
+  const { album } = env;
+  const { W, H, B, PW, PH, M, k, colors } = g;
   const title = album.title || album.name || 'האלבום שלנו';
   const sub = album.subtitle || '';
   const fam = theme.font;
-
-  if (theme.frame === 'polaroid') {
-    const w = PW * 0.66, h = w * 1.12;
-    const img = await load(p, w, h);
-    drawPhoto(ctx, img, p, { x: B + (PW - w) / 2, y: B + PH * 0.08, w, h: Math.min(h, PH * 0.66) }, theme, k, r);
-    drawText(ctx, title, B + PW / 2, B + PH * 0.83, { size: PH * 0.11, weight: 700, family: fam, color: colors.text, maxW: PW * 0.85 });
-    drawText(ctx, sub, B + PW / 2, B + PH * 0.92, { size: PH * 0.05, weight: 700, family: fam, color: colors.accent, maxW: PW * 0.8 });
+  if (theme.cover === 'framed') {
+    await framedHero(ctx, page, theme, g, { title, sub, titleScale: 1.15 });
     return;
   }
-  if (theme.id === 'classic' || theme.id === 'colorful') {
-    const bw = PW - 2 * M * 1.4, bh = PH * 0.62;
-    const img = await load(p, bw, bh);
-    drawPhoto(ctx, img, p, { x: B + (PW - bw) / 2, y: B + M * 1.4, w: bw, h: bh }, theme, k, r, { noTilt: true });
-    const ty = B + M * 1.4 + bh + (PH - M * 1.4 - bh) * 0.42;
-    drawText(ctx, title, B + PW / 2, ty, { size: PH * 0.085, weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85 });
-    if (theme.id === 'classic') {
-      ctx.fillStyle = colors.accent;
-      ctx.fillRect(B + PW / 2 - 12 * k, ty + PH * 0.055, 24 * k, 0.4 * k);
-    }
-    drawText(ctx, sub, B + PW / 2, ty + PH * 0.1, { size: PH * 0.038, weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8 });
-    return;
-  }
-  // modern + magazine: full-bleed cover
-  const img = await load(p, W, H);
-  drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true });
-  if (theme.id === 'magazine') {
+  await fullBleedHero(ctx, page, theme, g);
+  if (theme.cover === 'magazine') {
     const gr = ctx.createLinearGradient(0, 0, 0, H * 0.45);
     gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H * 0.45);
@@ -334,63 +732,63 @@ async function renderCover(ctx, page, env, g) {
     ctx.fillStyle = colors.accent;
     ctx.fillRect(B + PW - M - 30 * k, B + M + PH * 0.16, 30 * k, 2.2 * k);
     drawText(ctx, sub, B + PW - M, B + M + PH * 0.21, { size: PH * 0.045, weight: 700, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
-  } else {
-    const gr = ctx.createLinearGradient(0, H * 0.45, 0, H);
-    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.75)');
-    ctx.fillStyle = gr; ctx.fillRect(0, H * 0.45, W, H * 0.55);
-    drawText(ctx, title, B + PW - M * 1.5, B + PH - M * 1.5 - PH * 0.08, { size: PH * 0.1, weight: 700, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right' });
-    ctx.fillStyle = colors.accent;
-    ctx.fillRect(B + PW - M * 1.5 - 18 * k, B + PH - M * 1.5 - PH * 0.025, 18 * k, 0.9 * k);
-    drawText(ctx, sub, B + PW - M * 1.5, B + PH - M * 1.5 + PH * 0.005, { size: PH * 0.04, weight: 300, family: fam, color: '#f0f0f0', maxW: PW - 3 * M, align: 'right' });
+    return;
   }
+  const gr = ctx.createLinearGradient(0, H * 0.45, 0, H);
+  gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.78)');
+  ctx.fillStyle = gr; ctx.fillRect(0, H * 0.45, W, H * 0.55);
+  const big = theme.font === 'Karantina';
+  drawText(ctx, title, B + PW - M * 1.5, B + PH - M * 1.5 - PH * 0.09, { size: PH * (big ? 0.16 : 0.1), weight: 700, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right' });
+  ctx.fillStyle = colors.accent;
+  ctx.fillRect(B + PW - M * 1.5 - 18 * k, B + PH - M * 1.5 - PH * 0.025, 18 * k, 0.9 * k);
+  drawText(ctx, sub, B + PW - M * 1.5, B + PH - M * 1.5 + PH * 0.005, { size: PH * (big ? 0.06 : 0.04), weight: 300, family: fam, color: '#f0f0f0', maxW: PW - 3 * M, align: 'right' });
 }
 
-async function renderChapter(ctx, page, env, g) {
-  const { theme } = env;
-  const { W, H, B, PW, PH, M, k, r, colors, load, photoOf } = g;
-  const p = photoOf(page.photos[0]);
+async function renderChapter(ctx, page, env, theme, g) {
+  const { W, H, B, PW, PH, k, colors } = g;
   const fam = theme.font;
-  const title = page.title || '';
-  const sub = page.subtitle || '';
-
   if (theme.fullBleedSolo) {
-    const img = await load(p, W, H);
-    drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true });
+    await fullBleedHero(ctx, page, theme, g);
     ctx.fillStyle = 'rgba(0,0,0,0.32)';
     ctx.fillRect(0, 0, W, H);
-    if (theme.bars) {
+    if (theme.deco.includes('bars')) {
       ctx.fillStyle = colors.accent;
       ctx.fillRect(B + PW / 2 - 15 * k, B + PH / 2 - PH * 0.13, 30 * k, 2 * k);
     }
-    drawText(ctx, title, B + PW / 2, B + PH / 2, { size: PH * 0.11, weight: theme.titleWeight, family: fam, color: '#fff', maxW: PW * 0.85, shadow: true });
-    drawText(ctx, sub, B + PW / 2, B + PH / 2 + PH * 0.09, { size: PH * 0.045, weight: theme.bodyWeight, family: fam, color: '#fff', maxW: PW * 0.8, shadow: true });
+    const big = theme.font === 'Karantina';
+    drawText(ctx, page.title || '', B + PW / 2, B + PH / 2, { size: PH * (big ? 0.17 : 0.11), weight: theme.titleWeight, family: fam, color: '#fff', maxW: PW * 0.85, shadow: true });
+    drawText(ctx, page.subtitle || '', B + PW / 2, B + PH / 2 + PH * 0.1, { size: PH * 0.045, weight: theme.bodyWeight, family: fam, color: '#fff', maxW: PW * 0.8, shadow: true });
     return;
   }
-  const w = PW - 2 * M * 1.6, h = PH * 0.6;
-  const img = await load(p, w, h);
-  drawPhoto(ctx, img, p, { x: B + (PW - w) / 2, y: B + M * 1.4, w, h }, theme, k, r);
-  const ty = B + M * 1.4 + h + (PH - M * 1.4 - h) * 0.42;
-  drawText(ctx, title, B + PW / 2, ty, { size: PH * (theme.frame === 'polaroid' ? 0.11 : 0.075), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.85 });
-  if (sub) drawText(ctx, sub, B + PW / 2, ty + PH * 0.08, { size: PH * 0.04, weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8 });
-  else {
-    // ornament
-    ctx.fillStyle = colors.accent;
-    const oy = ty + PH * 0.065;
-    ctx.fillRect(B + PW / 2 - 10 * k, oy, 20 * k, 0.4 * k);
-    ctx.beginPath(); ctx.arc(B + PW / 2, oy + 0.2 * k, 1.1 * k, 0, Math.PI * 2); ctx.fill();
-  }
+  await framedHero(ctx, page, theme, g, { title: page.title || '', sub: page.subtitle || '' });
 }
 
-function renderEnd(ctx, page, env, g) {
-  const { theme, album } = env;
-  const { B, PW, PH, k, colors } = g;
+function renderEnd(ctx, page, env, theme, g) {
+  const { album } = env;
+  const { B, PW, PH, k, r, colors } = g;
   const fam = theme.font;
+  drawOverlayDeco(ctx, theme, colors, g, r, page);
   const text = page.title || (page.quote ? 'הרגעים הקטנים הם הגדולים באמת' : 'נוצר באהבה');
   const sub = page.subtitle ?? (page.quote ? '' : (album.yearRange || ''));
-  drawText(ctx, text, B + PW / 2, B + PH * 0.47, { size: PH * (theme.frame === 'polaroid' ? 0.09 : 0.06), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.8 });
-  ctx.fillStyle = colors.accent;
+  const big = theme.frame === 'polaroid' || theme.font === 'Amatic SC' || theme.font === 'Karantina';
+  drawText(ctx, text, B + PW / 2, B + PH * 0.47, { size: PH * (big ? 0.09 : 0.06), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.8, gold: theme.goldText });
+  ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 2 * k, B + PH * 0.54, 4 * k, 4 * k) : colors.accent;
   ctx.beginPath(); ctx.arc(B + PW / 2, B + PH * 0.54, 1.3 * k, 0, Math.PI * 2); ctx.fill();
-  drawText(ctx, sub, B + PW / 2, B + PH * 0.6, { size: PH * 0.035, weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8 });
+  drawText(ctx, sub, B + PW / 2, B + PH * 0.6, { size: PH * 0.035, weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.8, gold: theme.goldText });
 }
 
-for (const [id, t] of Object.entries(THEMES)) t.id = id;
+// small schematic of a template (for the layout picker)
+export function drawTemplateIcon(canvas, tpl, aspect = 1, color = '#2f6f68') {
+  const W = 72, H = Math.round(72 / aspect);
+  canvas.width = W * 2; canvas.height = H * 2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2, 2);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  const m = tpl.full ? 0 : 6, gap = 2.5;
+  for (const s of tpl.slots) {
+    const sx = 1 - s.x - s.w;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.75;
+    ctx.fillRect(m + sx * (W - 2 * m) + gap / 2, m + s.y * (H - 2 * m) + gap / 2, s.w * (W - 2 * m) - gap, s.h * (H - 2 * m) - gap);
+  }
+}
