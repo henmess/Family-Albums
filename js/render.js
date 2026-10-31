@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails) and for the print PDF (full resolution).
-import { templateById, rng } from './layout.js';
+import { templateById, rng } from './layout.js?v=3';
 
 export const THEMES = {
   classic: {
@@ -240,7 +240,10 @@ export async function renderPage(canvas, page, env) {
   drawBackground(ctx, W, H, colors, theme, k, r);
 
   const photoOf = id => photosById.get(id);
-  const load = async (p, w, h) => (p ? env.getImage(p, w, h) : null);
+  const load = async (p, w, h) => {
+    if (!p) return null;
+    try { return await env.getImage(p, w, h); } catch (e) { console.warn('image failed', e); return null; }
+  };
 
   if (page.type === 'photos') {
     const tpl = templateById(page.template);

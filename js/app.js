@@ -1,7 +1,7 @@
-import * as db from './db.js';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js';
-import { generateAlbum, rerollPage, templateById } from './layout.js';
-import { THEMES, renderPage, ensureFonts } from './render.js';
+import * as db from './db.js?v=3';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=3';
+import { generateAlbum, rerollPage, templateById } from './layout.js?v=3';
+import { THEMES, renderPage, ensureFonts } from './render.js?v=3';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -53,9 +53,12 @@ function modal(title, bodyHtml, okText = 'אישור') {
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 async function thumbBitmap(p) {
+  if (!(p.thumb instanceof Blob)) return null;
   if (state.thumbCache.has(p.id)) return state.thumbCache.get(p.id);
   const pr = createImageBitmap(p.thumb).then(b => { thumbSet.add(b); return b; });
   state.thumbCache.set(p.id, pr);
+  // don't remember failures – try again next time
+  pr.catch(() => { if (state.thumbCache.get(p.id) === pr) state.thumbCache.delete(p.id); });
   return pr;
 }
 
@@ -101,7 +104,7 @@ async function showHome() {
   }
   grid.innerHTML = albums.map(a => `
     <a class="album-card" href="#album/${a.id}">
-      <div class="album-cover">${a.coverThumb ? `<img src="${URL.createObjectURL(a.coverThumb)}" alt="">` : '<span>📷</span>'}</div>
+      <div class="album-cover">${a.coverThumb instanceof Blob ? `<img src="${URL.createObjectURL(a.coverThumb)}" alt="" onerror="this.remove()">` : '<span>📷</span>'}</div>
       <div class="album-info">
         <strong>${esc(a.name)}</strong>
         <span>${a.photoCount || 0} תמונות · ${THEMES[a.theme]?.name || ''}</span>
@@ -138,8 +141,33 @@ async function openAlbum(id, tab) {
   $('#homeView').classList.add('hidden');
   $('#albumView').classList.remove('hidden');
   $('#albumName').textContent = state.album.name;
+  await repairPhotos();
   await upgradeFeatures();
   showTab(tab);
+}
+
+async function readable(blob) {
+  try { await blob.arrayBuffer(); return true; } catch { return false; }
+}
+
+// photos saved by an older version: move to the Safari-safe format and
+// rebuild a broken thumbnail from the original file when possible
+async function repairPhotos() {
+  const old = state.photos.filter(p => p.legacy);
+  let lost = 0;
+  for (const p of old) {
+    try {
+      if (!(p.thumb instanceof Blob) || !(await readable(p.thumb))) {
+        const orig = await db.getOriginal(p.id);
+        if (orig && await readable(orig)) {
+          const info = await analyzeFile(orig);
+          p.thumb = info.thumb; p.feat = info.feat;
+        } else { lost++; continue; }
+      }
+      await db.migratePhoto(p);
+    } catch (e) { console.warn('repair failed', e); lost++; }
+  }
+  if (lost) toast(`${lost} תמונות לא נשמרו כראוי בדפדפן – מומלץ להעלות אותן שוב`, 7000);
 }
 
 // photos uploaded with an older version get the new similarity fingerprints
@@ -295,10 +323,15 @@ function renderPhotos() {
       <div class="ph-bottom"><span class="stars">${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}</span>
         <button class="del" title="מחיקה מהאלבום">🗑</button></div>
       <div class="check">${included ? '✓' : ''}</div>`;
-    const url = URL.createObjectURL(p.thumb);
     const img = el.querySelector('img');
-    img.src = url;
-    img.onload = () => URL.revokeObjectURL(url);
+    if (p.thumb instanceof Blob) {
+      const url = URL.createObjectURL(p.thumb);
+      img.src = url;
+      img.onload = () => URL.revokeObjectURL(url);
+      img.onerror = () => { URL.revokeObjectURL(url); el.classList.add('broken'); };
+    } else {
+      el.classList.add('broken');
+    }
     el.onclick = async e => {
       if (e.target.closest('.del')) return;
       const auto = !p.duplicate && !p.weak;
@@ -651,4 +684,5 @@ async function exportPDF() {
   }
 }
 
-route();
+route().catch(e => { console.error(e); toast('משהו השתבש בטעינה – נסו לרענן את הדף', 8000); });
+window.__albumsReady = true;

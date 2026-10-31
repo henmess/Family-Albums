@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Rubik:wght@300;400;500;700&family=Secular+One&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
   <header class="topbar">
@@ -142,6 +142,17 @@
   <div id="toast" class="toast hidden"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=3"></script>
+  <script>
+    // if the app didn't start (e.g. an old cached file after an update), offer a refresh
+    setTimeout(function () {
+      if (window.__albumsReady) return;
+      var d = document.createElement('div');
+      d.className = 'load-error';
+      d.innerHTML = 'האתר לא נטען כמו שצריך. <button class="btn primary small">רענון</button>';
+      d.querySelector('button').onclick = function () { location.reload(); };
+      document.body.appendChild(d);
+    }, 8000);
+  </script>
 </body>
 </html>

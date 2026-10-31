@@ -223,3 +223,11 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
   .photo-grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); }
   .hint { margin-inline-start: 0; width: 100%; }
 }
+
+.load-error {
+  position: fixed; top: 80px; left: 50%; transform: translateX(-50%); z-index: 300;
+  background: #fff4e0; border: 1px solid #f1d29c; padding: 12px 18px; border-radius: 12px;
+  display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow);
+}
+.photo.broken { background: #e9e3d9 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ctext x='4' y='17' font-size='14'%3E%E2%9A%A0%EF%B8%8F%3C/text%3E%3C/svg%3E") center / 40px no-repeat; }
+.photo.broken img { visibility: hidden; }
