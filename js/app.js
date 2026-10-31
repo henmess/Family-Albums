@@ -1,7 +1,7 @@
-import * as db from './db.js?v=21';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=21';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=21';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=21';
+import * as db from './db.js?v=22';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=22';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=22';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=22';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1048,6 +1048,44 @@ function relayoutPage(pg) {
   pg.variant = Math.random();
 }
 
+// switch a page between "regular photo page" and "chapter opening"
+const chapterDateFmt = new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+function setPageType(i, type) {
+  const a = state.album;
+  const pg = a.pages[i];
+  if (!pg || pg.type === type) return null;
+  const keep = { id: pg.id, variant: pg.variant, style: pg.style, bg: pg.bg, crops: pg.crops, caption: pg.caption, captionBullets: pg.captionBullets };
+  let note = '';
+  if (type === 'chapter' && pg.type === 'photos') {
+    const byId = photosById();
+    // the first photo in reading order becomes the opening photo
+    const ordered = [...pg.photos];
+    const [first, ...rest] = ordered;
+    const ph = byId.get(first);
+    a.pages[i] = { ...keep, type: 'chapter', photos: [first], title: pg.title || (ph ? chapterDateFmt.format(new Date(ph.date)) : ''), subtitle: pg.subtitle || '' };
+    if (rest.length) {
+      const next = a.pages[i + 1];
+      if (next && next.type === 'photos' && next.photos.length + rest.length <= 6) {
+        next.photos = [...rest, ...next.photos];
+        for (const id of rest) if (pg.captions?.[id]) (next.captions ||= {})[id] = pg.captions[id];
+        relayoutPage(next);
+        note = `שאר ${rest.length} התמונות עברו לעמוד הבא, שעוצב מחדש`;
+      } else {
+        const np = { id: db.uid(), type: 'photos', photos: rest, variant: Math.random() };
+        for (const id of rest) if (pg.captions?.[id]) (np.captions ||= {})[id] = pg.captions[id];
+        relayoutPage(np);
+        a.pages.splice(i + 1, 0, np);
+        note = `שאר ${rest.length} התמונות עברו לעמוד חדש אחרי הפתיחה`;
+      }
+    }
+  } else if (type === 'photos' && pg.type === 'chapter') {
+    a.pages[i] = { ...keep, type: 'photos', photos: [...pg.photos] };
+    relayoutPage(a.pages[i]);
+    note = 'העמוד הפך לעמוד תמונות רגיל';
+  } else return null;
+  return note;
+}
+
 async function movePhoto(from, slot, to, toSlot) {
   const a = state.album;
   const before = structuredClone(a.pages);
@@ -1254,6 +1292,14 @@ function relayout(photoIds, avoid) {
 function edUpdatePanel() {
   const pg = ed.page;
   const isPhotos = pg.type === 'photos';
+  const typeable = pg.type === 'photos' || pg.type === 'chapter';
+  $('#edTypeSec').classList.toggle('hidden', !typeable);
+  if (typeable) {
+    $$('#edType button').forEach(b => b.classList.toggle('active', b.dataset.v === pg.type));
+    $('#edTypeHint').textContent = pg.type === 'chapter'
+      ? 'עמוד פתיחה: תמונה ראשית אחת עם כותרת גדולה.'
+      : (pg.photos.length > 1 ? 'בהפיכה לפתיחת פרק: התמונה הראשונה נשארת, והשאר עוברות לעמוד הבא.' : '');
+  }
   const hasSel = ed.sel != null && !ed.selText && pg.photos.length > 0 && pg.type !== 'end';
   $('#edSlot').classList.toggle('hidden', !hasSel);
   $('#edTextSel').classList.toggle('hidden', !ed.selText);
@@ -1418,6 +1464,23 @@ function closeEditor() {
   $('#editor').classList.add('hidden');
   document.body.style.overflow = '';
 }
+
+$$('#edType button').forEach(b => b.onclick = async () => {
+  const type = b.dataset.v;
+  if (ed.page.type === type) return;
+  const i = ed.index;
+  await edCommit(); // keep edits made so far
+  const before = structuredClone(state.album.pages);
+  const note = setPageType(i, type);
+  if (note == null) return;
+  await db.saveAlbum(state.album);
+  renderPages();
+  await openEditor(i);
+  if (type === 'chapter') { ed.selText = null; edUpdatePanel(); }
+  let msg = note || 'העמוד הפך לפתיחת פרק';
+  if ((state.album.pages.length - 1) % 2) msg += ' · שימו לב: מספר עמודים אי-זוגי';
+  toast(msg, 6000, { label: 'ביטול', run: async () => { state.album.pages = before; await db.saveAlbum(state.album); renderPages(); closeEditor(); } });
+});
 
 $('#edSave').onclick = async () => { await edCommit(); closeEditor(); toast('העמוד נשמר'); };
 $('#edCancel').onclick = closeEditor;
