@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=13';
+import { templateById, rng } from './layout.js?v=14';
 
 /*
  Theme fields
@@ -322,7 +322,12 @@ function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 
   if (gold) {
     ctx.fillStyle = goldGradient(ctx, x0, y - s / 2, tw, s);
   } else ctx.fillStyle = color;
-  if (shadow) { ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = s * 0.35; ctx.shadowOffsetY = s * 0.05; }
+  if (shadow) {
+    // readable over any photo without darkening it: a soft halo + a tight shadow
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = s * 0.45; ctx.shadowOffsetY = s * 0.04;
+    ctx.fillText(text, x, y);
+    ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = s * 0.1; ctx.shadowOffsetY = s * 0.03;
+  }
   ctx.fillText(text, x, y);
   ctx.restore();
   return s;
@@ -700,13 +705,6 @@ function drawPhoto(ctx, img, photo, box, theme, k, r, opts = {}) {
   if (opts.caption && frame !== 'polaroid') {
     const inset = opts.captionInset || 0;
     const fs = Math.max(2.6 * k, Math.min(w, h) * 0.055);
-    const bandH = fs * 2.4;
-    ctx.save();
-    shapePath(ctx, shape, x, y, w, h, opts.full ? 0 : rad); ctx.clip();
-    const gr = ctx.createLinearGradient(0, y + h - bandH - inset, 0, y + h);
-    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.6)');
-    ctx.fillStyle = gr; ctx.fillRect(x, y + h - bandH - inset, w, bandH + inset);
-    ctx.restore();
     drawText(ctx, opts.caption, x + w / 2, y + h - inset - fs * 0.95, { size: fs, weight: theme.bodyWeight, family: theme.font, color: '#fff', maxW: w * 0.9, shadow: true });
   }
   if (!opts.full && theme.deco.includes('tape') && r() < 0.75) drawTape(ctx, x, y, w, h, k, r, false, colors);
@@ -1057,16 +1055,9 @@ async function renderCover(ctx, page, env, theme, g) {
   }
   await fullBleedHero(ctx, page, theme, g);
   const sy = subjectY(page, g);
-  const shade = top => {
-    const gr = top ? ctx.createLinearGradient(0, 0, 0, H * 0.5) : ctx.createLinearGradient(0, H, 0, H * 0.45);
-    gr.addColorStop(0, 'rgba(0,0,0,0.7)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = gr;
-    if (top) ctx.fillRect(0, 0, W, H * 0.5); else ctx.fillRect(0, H * 0.45, W, H * 0.55);
-  };
   if (theme.cover === 'magazine') {
     // magazine title lives at the top unless the subject is there
     const top = placeTop(page, g, 'title', sy >= 0.4);
-    shade(top);
     const y0 = top ? B + M + PH * 0.08 : B + PH - M - PH * (sub2 ? 0.27 : 0.2);
     textGroup(ctx, g, 'title', B + PW - M, y0, () => {
       drawText(ctx, title, B + PW - M, y0, { size: PH * 0.16, weight: 900, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
@@ -1090,7 +1081,6 @@ async function renderCover(ctx, page, env, theme, g) {
   }
   // bottom title, moved to the top when the subject is low in the photo
   const top = placeTop(page, g, 'title', sy > 0.58);
-  shade(top);
   const big = theme.font === 'Karantina';
   const y0 = top ? B + M * 1.5 + PH * 0.08 : B + PH - M * 1.5 - PH * (sub2 ? 0.15 : 0.09);
   textGroup(ctx, g, 'title', B + PW - M * 1.5, y0, () => {
@@ -1107,8 +1097,6 @@ async function renderChapter(ctx, page, env, theme, g) {
   const fam = theme.font;
   if (theme.fullBleedSolo) {
     await fullBleedHero(ctx, page, theme, g);
-    ctx.fillStyle = 'rgba(0,0,0,0.32)';
-    ctx.fillRect(0, 0, W, H);
     // centered title, unless the subject is in the middle – then above/below it
     const sy = subjectY(page, g);
     const centerBusy = Math.abs(sy - 0.5) < 0.22;

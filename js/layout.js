@@ -1,7 +1,7 @@
 // Automatic album layout: chooses page templates, groups photos into
 // chapters (events) and assigns photos to slots so cropping is minimal.
-import { isIncluded } from './analyze.js?v=13';
-import { uid } from './db.js?v=13';
+import { isIncluded } from './analyze.js?v=14';
+import { uid } from './db.js?v=14';
 
 export function rng(seed) {
   let a = seed >>> 0;
