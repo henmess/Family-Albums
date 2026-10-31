@@ -390,3 +390,8 @@ body.dragging-photo .page .canvas-wrap::after { display: none; }
 /* theme cards: cover + inside page */
 .theme-card .previews { display: flex; gap: 3px; }
 .theme-card .previews canvas { width: 50%; min-width: 0; flex: 1; }
+
+/* finished PDF */
+.pdf-info { color: var(--muted); font-size: .9rem; margin: 0 0 12px; word-break: break-all; }
+.pdf-actions { display: flex; flex-direction: column; gap: 8px; }
+.pdf-actions .btn { text-align: center; text-decoration: none; display: block; }

@@ -1,7 +1,7 @@
-import * as db from './db.js?v=16';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=16';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=16';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=16';
+import * as db from './db.js?v=18';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=18';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=18';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=18';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -816,6 +816,41 @@ async function loadFull(p, wPx, hPx) {
   }
 }
 
+// Phones often open a PDF instead of downloading it (with no way back), so
+// the finished file is offered through explicit buttons: share/save, download, view.
+function offerPdf(blob, name, asciiName = name) {
+  const file = new File([blob], name, { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
+  const mb = (blob.size / 1048576).toFixed(1);
+  modal('הקובץ מוכן להדפסה 🎉', `
+    <p class="pdf-info">${esc(name)} · ${mb} MB<br><span class="small">שם הקובץ בהורדה: ${esc(asciiName)}</span></p>
+    <div class="pdf-actions">
+      ${canShare ? '<button class="btn primary big full" id="pdfShare">📤 שמירה / שליחה</button>' : ''}
+      <button class="btn ${canShare ? 'ghost' : 'primary'} big full" id="pdfDownload">⬇️ הורדה למכשיר</button>
+      <button class="btn ghost full" id="pdfView">👁 פתיחה לצפייה בלשונית חדשה</button>
+    </div>
+    ${isIOS && canShare ? '<p class="small">💡 באייפון: לחצו "שמירה / שליחה" ובחרו <b>"שמור בקבצים"</b>, או שלחו ישירות בוואטסאפ/מייל לבית הדפוס.</p>' : ''}
+    ${isIOS && !canShare ? '<p class="small">💡 באייפון: אחרי "הורדה למכשיר" הקובץ נשמר באפליקציית <b>קבצים</b> ← <b>הורדות</b>.</p>' : ''}
+  `, 'סגירה').then(() => setTimeout(() => URL.revokeObjectURL(url), 60000));
+  $('#modalCancel').classList.add('hidden');
+  const restore = () => $('#modalCancel').classList.remove('hidden');
+  $('#modalOk').addEventListener('click', restore, { once: true });
+  $('#pdfShare')?.addEventListener('click', async () => {
+    try { await navigator.share({ files: [file], title: name }); }
+    catch (e) { if (e.name !== 'AbortError') toast('השיתוף לא הצליח – נסו "הורדה למכשיר"', 5000); }
+  });
+  $('#pdfDownload').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = url; a.download = asciiName; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  $('#pdfView').addEventListener('click', () => {
+    const w = window.open(url, '_blank');
+    if (!w) toast('הדפדפן חסם פתיחת לשונית – נסו "הורדה למכשיר"', 5000);
+  });
+}
+
 async function exportPDF() {
   const a = state.album;
   if (!a.pages?.length) return;
@@ -846,8 +881,13 @@ async function exportPDF() {
       await new Promise(r => setTimeout(r, 0));
     }
     btn.textContent = 'שומר קובץ…';
-    pdf.save(`${a.name || 'album'}.pdf`);
-    toast('הקובץ מוכן! אפשר לשלוח אותו לבית הדפוס 🎉', 5000);
+    const name = `${(a.name || 'album').replace(/[\\/:*?"<>|]/g, '')}.pdf`;
+    // some browsers drop non-Latin download names (leaving a file with no .pdf), so the
+    // downloaded copy gets a safe Latin name; sharing keeps the Hebrew album name
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const latin = (a.name || '').replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-');
+    offerPdf(pdf.output('blob'), name, `${latin || 'family-album'}-${stamp}-${a.id.slice(-4)}.pdf`);
   } catch (e) {
     console.error(e);
     toast('אירעה שגיאה ביצירת הקובץ. נסו "איכות טובה" או פחות עמודים.', 6000);
