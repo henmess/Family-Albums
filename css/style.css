@@ -325,3 +325,22 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
 .ed-pos .btn { border-color: var(--line); padding: 6px 4px; }
 .ed-sel.text { border-color: #ff7a1a; border-style: dashed; }
 #edTextSizeLbl { min-width: 48px; font-size: .85rem; }
+
+/* ---------- drag photos between pages ---------- */
+.drag-tip { text-align: center; color: var(--muted); font-size: .85rem; margin: 0 0 18px; }
+.drag-ghost {
+  position: fixed; top: 0; left: 0; width: 90px; height: 90px; z-index: 300; pointer-events: none;
+  border-radius: 10px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.35); border: 3px solid #fff;
+  transform-origin: center; opacity: .92;
+}
+.drag-ghost img { width: 100%; height: 100%; object-fit: cover; display: block; }
+body.dragging-photo { user-select: none; -webkit-user-select: none; cursor: grabbing; }
+body.dragging-photo .page .canvas-wrap::after { display: none; }
+.page.drag-source { opacity: .55; }
+.page.drop-target .canvas-wrap { outline: 4px solid var(--accent); outline-offset: 2px; }
+.page.drop-target .canvas-wrap::before {
+  content: 'שחררו כאן'; position: absolute; inset: auto 0 10px; margin: auto; width: max-content; z-index: 2;
+  background: var(--accent); color: #fff; padding: 4px 12px; border-radius: 999px; font-size: .85rem;
+}
+.page .canvas-wrap { -webkit-touch-callout: none; }
+.toast-btn { margin-inline-start: 10px; background: #fff; color: #2a2622; border: none; border-radius: 999px; padding: 4px 12px; font: inherit; font-weight: 500; cursor: pointer; }

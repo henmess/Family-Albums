@@ -1,7 +1,7 @@
-import * as db from './db.js?v=9';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=9';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=9';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=9';
+import * as db from './db.js?v=10';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=10';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=10';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=10';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -24,9 +24,16 @@ const state = {
 };
 
 // ---------------- helpers ----------------
-function toast(msg, ms = 2800) {
+function toast(msg, ms = 2800, action = null) {
   const t = $('#toast');
   t.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-btn';
+    b.textContent = action.label;
+    b.onclick = () => { t.classList.add('hidden'); action.run(); };
+    t.append(' ', b);
+  }
   t.classList.remove('hidden');
   clearTimeout(t._h);
   t._h = setTimeout(() => t.classList.add('hidden'), ms);
@@ -661,7 +668,8 @@ function renderPages() {
           </div>
         </div>`;
       el.querySelectorAll('[data-act]').forEach(btn => btn.onclick = () => pageAction(i, btn.dataset.act));
-      el.querySelector('.canvas-wrap').onclick = () => openEditor(i);
+      el.querySelector('.canvas-wrap').onclick = () => { if (!dragJustEnded) openEditor(i); };
+      setupPageDrag(el);
       s.appendChild(el);
       io.observe(el);
     }
@@ -678,10 +686,12 @@ async function drawPreview(el, token) {
   if (!page || token !== renderToken) return;
   const c = document.createElement('canvas');
   el.classList.add('loading');
+  let res = null;
   try {
-    await renderPage(c, page, previewEnv(i));
+    res = await renderPage(c, page, previewEnv(i));
   } catch (e) { console.error(e); }
   if (token !== renderToken) return;
+  el._slots = res?.slots || [];
   const old = el.querySelector('canvas');
   old.replaceWith(c);
   el.classList.remove('loading');
@@ -811,6 +821,192 @@ async function exportPDF() {
   }
 }
 
+
+
+// ================= drag a photo from page to page =================
+let drag = null;
+let dragJustEnded = false;
+
+function slotAt(el, x, y) {
+  const c = el.querySelector('canvas');
+  if (!c || !el._slots?.length) return null;
+  const r = c.getBoundingClientRect();
+  const sc = c.width / r.width;
+  const px = (x - r.left) * sc, py = (y - r.top) * sc;
+  for (let i = el._slots.length - 1; i >= 0; i--) {
+    const s = el._slots[i];
+    if (px >= s.x && px <= s.x + s.w && py >= s.y && py <= s.y + s.h) return s;
+  }
+  return null;
+}
+
+function setupPageDrag(el) {
+  const wrap = el.querySelector('.canvas-wrap');
+  // mouse: start dragging after a small movement
+  wrap.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const slot = slotAt(el, e.clientX, e.clientY);
+    if (!slot) return;
+    const start = { x: e.clientX, y: e.clientY };
+    const move = ev => {
+      if (!drag && Math.hypot(ev.clientX - start.x, ev.clientY - start.y) > 6) beginDrag(el, slot, ev.clientX, ev.clientY);
+      if (drag) { ev.preventDefault(); updateDrag(ev.clientX, ev.clientY); }
+    };
+    const up = ev => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (drag) endDrag(ev.clientX, ev.clientY);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  });
+  // touch: long-press, then drag (a normal swipe still scrolls the page)
+  wrap.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    const t0 = e.touches[0];
+    const slot = slotAt(el, t0.clientX, t0.clientY);
+    if (!slot) return;
+    let last = { x: t0.clientX, y: t0.clientY };
+    const timer = setTimeout(() => {
+      beginDrag(el, slot, last.x, last.y);
+      navigator.vibrate?.(25);
+    }, 380);
+    const move = ev => {
+      const t = ev.touches[0];
+      if (!drag) {
+        if (Math.hypot(t.clientX - t0.clientX, t.clientY - t0.clientY) > 10) cleanup();
+        last = { x: t.clientX, y: t.clientY };
+        return;
+      }
+      ev.preventDefault();
+      last = { x: t.clientX, y: t.clientY };
+      updateDrag(last.x, last.y);
+    };
+    const end = () => { const was = !!drag; cleanup(); if (was) endDrag(last.x, last.y); };
+    const cleanup = () => {
+      clearTimeout(timer);
+      window.removeEventListener('touchmove', move);
+      window.removeEventListener('touchend', end);
+      window.removeEventListener('touchcancel', end);
+    };
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchend', end);
+    window.addEventListener('touchcancel', end);
+  }, { passive: true });
+  wrap.addEventListener('contextmenu', e => { if (drag) e.preventDefault(); });
+}
+
+function beginDrag(el, slot, x, y) {
+  const i = +el.dataset.index;
+  const page = state.album.pages[i];
+  const pid = page?.photos[slot.index];
+  const p = photosById().get(pid);
+  if (!p) return;
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  if (p.thumb instanceof Blob) {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(p.thumb);
+    ghost.appendChild(img);
+  }
+  document.body.appendChild(ghost);
+  document.body.classList.add('dragging-photo');
+  el.classList.add('drag-source');
+  drag = { el, from: i, slot: slot.index, pid, ghost, target: null, x, y, raf: 0 };
+  updateDrag(x, y);
+  const scroll = () => {
+    if (!drag) return;
+    const edge = 90;
+    if (drag.y < edge) window.scrollBy(0, -Math.ceil((edge - drag.y) / 6));
+    else if (drag.y > innerHeight - edge) window.scrollBy(0, Math.ceil((drag.y - innerHeight + edge) / 6));
+    drag.raf = requestAnimationFrame(scroll);
+  };
+  drag.raf = requestAnimationFrame(scroll);
+}
+
+function updateDrag(x, y) {
+  if (!drag) return;
+  drag.x = x; drag.y = y;
+  drag.ghost.style.transform = `translate(${x - 45}px, ${y - 45}px)`;
+  drag.ghost.style.display = 'none';
+  const under = document.elementFromPoint(x, y)?.closest('#pages .page');
+  drag.ghost.style.display = '';
+  const target = under && under !== drag.el ? under : null;
+  if (target !== drag.target) {
+    drag.target?.classList.remove('drop-target');
+    target?.classList.add('drop-target');
+    drag.target = target;
+  }
+}
+
+async function endDrag(x, y) {
+  const d = drag;
+  drag = null;
+  cancelAnimationFrame(d.raf);
+  const img = d.ghost.querySelector('img');
+  if (img) URL.revokeObjectURL(img.src);
+  d.ghost.remove();
+  document.body.classList.remove('dragging-photo');
+  d.el.classList.remove('drag-source');
+  d.target?.classList.remove('drop-target');
+  dragJustEnded = true;
+  setTimeout(() => { dragJustEnded = false; }, 60);
+  if (!d.target) return;
+  const to = +d.target.dataset.index;
+  const toSlot = slotAt(d.target, x, y);
+  await movePhoto(d.from, d.slot, to, toSlot ? toSlot.index : null);
+}
+
+// re-design a page for its (new) set of photos
+function relayoutPage(pg) {
+  const a = state.album;
+  const theme = effectiveTheme(pg, themeOf(a));
+  const byId = photosById();
+  const ps = pg.photos.map(id => byId.get(id)).filter(Boolean);
+  if (!ps.length) return;
+  const choice = chooseTemplate(ps, contentAspect(formatOf(a), theme), rng(Math.floor(Math.random() * 1e9)), { allowOverlap: !!theme.allowOverlap });
+  pg.template = choice.template;
+  pg.photos = choice.photos;
+  delete pg.shapes;
+  pg.variant = Math.random();
+}
+
+async function movePhoto(from, slot, to, toSlot) {
+  const a = state.album;
+  const before = structuredClone(a.pages);
+  const src = a.pages[from], dst = a.pages[to];
+  const pid = src.photos[slot];
+  if (!dst || dst.type === 'end') { toast('אי אפשר להעביר תמונה לעמוד הסיום'); return; }
+  const single = pg => pg.type === 'cover' || pg.type === 'chapter';
+  let removedPage = false;
+  if (single(src) || single(dst)) {
+    // cover / chapter pages hold one photo, so the two photos swap places
+    const ds = single(dst) ? 0 : (toSlot ?? 0);
+    const other = dst.photos[ds];
+    if (!other) return;
+    src.photos[slot] = other;
+    dst.photos[ds] = pid;
+    if (src.type === 'photos') relayoutPage(src);
+    if (dst.type === 'photos') relayoutPage(dst);
+  } else {
+    if (dst.photos.length >= 6) { toast('בעמוד הזה כבר יש 6 תמונות – הוציאו ממנו תמונה קודם'); return; }
+    src.photos.splice(slot, 1);
+    dst.photos.push(pid);
+    for (const key of ['captions', 'crops']) {
+      if (src[key]?.[pid] != null) { (dst[key] ||= {})[pid] = src[key][pid]; delete src[key][pid]; }
+    }
+    relayoutPage(dst);
+    if (src.photos.length) relayoutPage(src);
+    else { a.pages.splice(from, 1); removedPage = true; }
+  }
+  await db.saveAlbum(a);
+  if (removedPage) renderPages();
+  else { rerenderPage(from); rerenderPage(to); }
+  const undo = { label: 'ביטול', run: async () => { a.pages = before; await db.saveAlbum(a); renderPages(); } };
+  let msg = removedPage ? 'התמונה הועברה, והעמוד שהתרוקן נמחק' : 'התמונה הועברה ושני העמודים עוצבו מחדש';
+  if (removedPage && (a.pages.length - 1) % 2) msg += ' (שימו לב: מספר עמודים אי-זוגי)';
+  toast(msg, 6000, undo);
+}
 
 // ================= page editor =================
 const ed = { index: -1, page: null, sel: null, selText: null, texts: [], swap: false, slots: [], scale: 1, rendering: false, again: false, album: null };
