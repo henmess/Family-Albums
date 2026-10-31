@@ -1,7 +1,7 @@
-import * as db from './db.js?v=11';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=11';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=11';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=11';
+import * as db from './db.js?v=12';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=12';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=12';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=12';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -307,29 +307,47 @@ async function filesFromEntries(entries) {
   return out.filter(Boolean);
 }
 
-async function addFiles(files) {
+// analyze and store files; returns the new photo records
+async function importFiles(files, onProgress = () => {}) {
   files = files.filter(f => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
-  if (!files.length) return;
   const album = state.album;
-  const prog = $('#progress');
-  prog.classList.remove('hidden');
   const existing = new Set(state.photos.map(p => p.name + '|' + p.size));
+  const added = [];
   let done = 0, failed = 0, skipped = 0;
   for (const f of files) {
-    prog.querySelector('.label').textContent = `מנתח תמונות… ${done + 1} מתוך ${files.length}`;
-    prog.querySelector('.bar').style.width = `${(done / files.length) * 100}%`;
-    if (existing.has(f.name + '|' + f.size)) { skipped++; done++; continue; }
+    onProgress(done, files.length);
+    if (existing.has(f.name + '|' + f.size)) {
+      skipped++; done++;
+      // already uploaded: still offer that photo
+      const p = state.photos.find(x => x.name === f.name && x.size === f.size);
+      if (p) added.push(p);
+      continue;
+    }
     try {
       const info = await analyzeFile(f);
       const photo = { id: db.uid(), albumId: album.id, name: f.name, size: f.size, manual: null, ...info };
       await db.savePhoto(photo, f);
       state.photos.push(photo);
+      added.push(photo);
     } catch (e) {
       console.warn('failed', f.name, e);
       failed++;
     }
     done++;
   }
+  onProgress(done, files.length);
+  return { added, failed, skipped, total: files.length };
+}
+
+async function addFiles(files) {
+  if (!files.some(f => f.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name))) return;
+  const album = state.album;
+  const prog = $('#progress');
+  prog.classList.remove('hidden');
+  const res = await importFiles(files, (done, total) => {
+    prog.querySelector('.label').textContent = `מנתח תמונות… ${Math.min(done + 1, total)} מתוך ${total}`;
+    prog.querySelector('.bar').style.width = `${(done / total) * 100}%`;
+  });
   prog.querySelector('.bar').style.width = '100%';
   prog.querySelector('.label').textContent = 'מזהה כפילויות ובוחר את התמונות הטובות…';
   await recurate();
@@ -337,9 +355,9 @@ async function addFiles(files) {
   if (album.pages) album.needsRedesign = true;
   await db.saveAlbum(album);
   renderPhotos();
-  let msg = `נוספו ${done - failed - skipped} תמונות`;
-  if (skipped) msg += ` · ${skipped} כבר היו באלבום`;
-  if (failed) msg += ` · ${failed} לא נתמכו (למשל HEIC – נסו להמיר ל-JPG)`;
+  let msg = `נוספו ${res.total - res.failed - res.skipped} תמונות`;
+  if (res.skipped) msg += ` · ${res.skipped} כבר היו באלבום`;
+  if (res.failed) msg += ` · ${res.failed} לא נתמכו (למשל HEIC – נסו להמיר ל-JPG)`;
   toast(msg, 5000);
 }
 
@@ -1411,7 +1429,7 @@ $$('#edShape button').forEach(b => b.onclick = () => {
 });
 $('#edSwap').onclick = () => { ed.swap = !ed.swap; edUpdatePanel(); edDrawSel(); };
 $('#edReplace').onclick = async () => {
-  const id = await pickPhoto();
+  const id = await pickPhoto(ed.sel != null ? ed.page.photos[ed.sel] : null);
   if (!id || ed.sel == null) return;
   ed.page.photos[ed.sel] = id;
   edUpdatePanel(); edRender();
@@ -1437,10 +1455,20 @@ $('#edVariant').onclick = () => { ed.page.variant = Math.random(); edRender(); }
 // ---------- photo picker ----------
 let pickerResolve = null;
 let pickerTab = 'unused';
-function pickPhoto() {
+let pickerCurrent = null;
+let pickerNew = [];
+const pickerDayFmt = new Intl.DateTimeFormat('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+try { const v = localStorage.getItem('pickerSize'); if (v) document.documentElement.style.setProperty('--pk', v + 'px'); } catch {}
+
+function pickPhoto(currentId = null) {
   return new Promise(resolve => {
     pickerResolve = resolve;
+    pickerCurrent = currentId;
+    pickerNew = [];
+    $('#pickerTabs [data-v="new"]').classList.add('hidden');
+    if (pickerTab === 'new') pickerTab = 'unused';
     $('#picker').classList.remove('hidden');
+    syncPickerControls();
     renderPicker();
   });
 }
@@ -1450,33 +1478,90 @@ function closePicker(id) {
   const r = pickerResolve; pickerResolve = null;
   r && r(id || null);
 }
+function syncPickerControls() {
+  $$('#pickerTabs button').forEach(x => x.classList.toggle('active', x.dataset.v === pickerTab));
+  const size = getComputedStyle(document.documentElement).getPropertyValue('--pk').trim() || '140px';
+  $$('#pickerSize button').forEach(x => x.classList.toggle('active', x.dataset.v + 'px' === size));
+}
 $('#pickerClose').onclick = () => closePicker(null);
 $('#picker').onclick = e => { if (e.target.id === 'picker') closePicker(null); };
-$$('#pickerTabs button').forEach(b => b.onclick = () => {
-  pickerTab = b.dataset.v;
-  $$('#pickerTabs button').forEach(x => x.classList.toggle('active', x === b));
-  renderPicker();
+$$('#pickerTabs button').forEach(b => b.onclick = () => { pickerTab = b.dataset.v; syncPickerControls(); renderPicker(); });
+$$('#pickerSize button').forEach(b => b.onclick = () => {
+  document.documentElement.style.setProperty('--pk', b.dataset.v + 'px');
+  try { localStorage.setItem('pickerSize', b.dataset.v); } catch {}
+  syncPickerControls();
 });
+
+// upload straight from the gallery inside the picker
+$('#pickerFile').onchange = async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  if (!files.length) return;
+  const prog = $('#pickerProgress');
+  prog.classList.remove('hidden');
+  const res = await importFiles(files, (done, total) => {
+    prog.textContent = `מעלה ומנתח… ${Math.min(done + 1, total)} מתוך ${total}`;
+  });
+  prog.textContent = 'כמעט מוכן…';
+  // photos picked by hand belong in the album even if they look like duplicates
+  for (const p of res.added) if (p.manual !== 'in') p.manual = 'in';
+  await recurate();
+  await db.updatePhotos(res.added);
+  await db.saveAlbum(state.album);
+  prog.classList.add('hidden');
+  if (res.failed) toast(`${res.failed} תמונות לא נתמכו (למשל HEIC – נסו להמיר ל-JPG)`, 5000);
+  if (!res.added.length) return;
+  if (res.added.length === 1) { closePicker(res.added[0].id); return; }
+  pickerNew = res.added.map(p => p.id);
+  const nb = $('#pickerTabs [data-v="new"]');
+  nb.classList.remove('hidden');
+  nb.textContent = `שהועלו עכשיו (${pickerNew.length})`;
+  pickerTab = 'new';
+  syncPickerControls();
+  renderPicker();
+};
+
 function renderPicker() {
   const a = state.album;
   const usedOn = new Map();
   (a.pages || []).forEach((pg, i) => (i === ed.index ? ed.page : pg).photos.forEach(id => { if (!usedOn.has(id)) usedOn.set(id, i); }));
-  let list = [...state.photos].sort((x, y) => x.date - y.date);
-  if (pickerTab === 'unused') list = list.filter(p => !usedOn.has(p.id)).sort((x, y) => isIncluded(y) - isIncluded(x) || x.date - y.date);
+  const all = [...state.photos].sort((x, y) => x.date - y.date);
+  const unused = all.filter(p => !usedOn.has(p.id));
+  const tabs = $$('#pickerTabs button');
+  tabs[0].textContent = `לא בשימוש (${unused.length})`;
+  tabs[1].textContent = `כל התמונות (${all.length})`;
+  let list = pickerTab === 'unused' ? unused : pickerTab === 'new' ? all.filter(p => pickerNew.includes(p.id)) : all;
   const grid = $('#pickerGrid');
-  grid.innerHTML = list.length ? '' : '<p class="small">כל התמונות כבר נמצאות באלבום. עברו ל"כל התמונות" או העלו תמונות נוספות.</p>';
+  grid.innerHTML = '';
+  if (!list.length) {
+    grid.innerHTML = `<div class="picker-empty">${pickerTab === 'unused'
+      ? 'כל התמונות כבר נמצאות באלבום.<br>עברו ל"כל התמונות", או העלו תמונה חדשה מהגלריה.'
+      : 'אין עדיין תמונות. לחצו "📷 העלאה מהגלריה".'}</div>`;
+    return;
+  }
+  let lastDay = null;
   for (const p of list) {
+    const day = new Date(p.date).toDateString();
+    if (day !== lastDay) {
+      lastDay = day;
+      const h = document.createElement('div');
+      h.className = 'picker-day';
+      h.textContent = pickerDayFmt.format(new Date(p.date));
+      grid.appendChild(h);
+    }
     const b = document.createElement('button');
-    if (!isIncluded(p)) b.className = 'excluded';
+    b.className = 'picker-item' + (isIncluded(p) ? '' : ' excluded') + (p.id === pickerCurrent ? ' current' : '');
     const img = document.createElement('img');
     img.loading = 'lazy';
     if (p.thumb instanceof Blob) { const u = URL.createObjectURL(p.thumb); img.src = u; img.onload = () => URL.revokeObjectURL(u); }
     b.appendChild(img);
-    if (usedOn.has(p.id)) {
-      const n = usedOn.get(p.id);
-      b.insertAdjacentHTML('beforeend', `<span class="used">${n === 0 ? 'בכריכה' : 'בעמוד ' + n}</span>`);
-    }
+    let badges = '';
+    if (p.id === pickerCurrent) badges += '<span class="pk-badge cur">התמונה הנוכחית</span>';
+    else if (usedOn.has(p.id)) { const n = usedOn.get(p.id); badges += `<span class="pk-badge">${n === 0 ? 'בכריכה' : 'בעמוד ' + n}</span>`; }
+    if (!isIncluded(p)) badges += `<span class="pk-badge dim">${p.duplicate ? 'כפילות' : 'לא נבחרה'}</span>`;
+    if (badges) b.insertAdjacentHTML('beforeend', `<div class="pk-badges">${badges}</div>`);
     b.onclick = async () => {
+      if (p.id === pickerCurrent) { closePicker(null); return; }
       if (!isIncluded(p)) { p.manual = 'in'; await db.updatePhoto(p); }
       closePicker(p.id);
     };
