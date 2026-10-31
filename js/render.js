@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=10';
+import { templateById, rng } from './layout.js?v=11';
 
 /*
  Theme fields
@@ -16,77 +16,77 @@ export const THEMES = {
     bg: '#fbf9f4', text: '#2c2a26', accent: '#b08d57',
     font: 'Frank Ruhl Libre', titleWeight: 700, bodyWeight: 400,
     margin: 14, gap: 4, frame: 'line', radius: 0, shadow: false, tilt: 0,
-    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true,
+    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true, pageDeco: ['frameLines', 'dateLine'],
   },
   gallery: {
     name: 'גלריה', desc: 'הרבה אוויר, תמונות כמו בתערוכה',
     bg: '#ffffff', text: '#1d1d1b', accent: '#9a8f80',
     font: 'Bellefair', titleWeight: 400, bodyWeight: 400,
     margin: 22, gap: 7, frame: 'none', radius: 0, shadow: true, tilt: 0,
-    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true, labels: true,
+    bgStyle: 'plain', deco: [], cover: 'framed', pageNumbers: true, labels: true, pageDeco: ['dateLine', 'block:soft'],
   },
   gold: {
     name: 'זהב חגיגי', desc: 'כחול לילה, מסגרות זהב ועיטורים',
     bg: '#13233f', text: '#f3e7c4', accent: '#d8b866',
     font: 'Frank Ruhl Libre', titleWeight: 700, bodyWeight: 400,
     margin: 17, gap: 6, frame: 'gold', radius: 0, shadow: true, tilt: 0,
-    bgStyle: 'navygold', deco: ['goldCorners'], shapeSolo: 'arch', cover: 'framed', goldText: true,
+    bgStyle: 'navygold', deco: ['goldCorners'], shapeSolo: 'arch', cover: 'framed', goldText: true, pageDeco: ['dateLine'],
   },
   boho: {
     name: 'בוהו טבעי', desc: 'גווני אדמה, קשתות ועלים',
     bg: '#f4ece1', text: '#5b4636', accent: '#c0714f', accent2: '#8a9a7b',
     font: 'Suez One', titleWeight: 400, bodyWeight: 400,
     margin: 15, gap: 5, frame: 'none', radius: 3, shadow: false, tilt: 0,
-    bgStyle: 'linen', deco: ['leaves'], shapeSolo: 'arch', archChance: 0.45, cover: 'framed', labels: true,
+    bgStyle: 'linen', deco: ['leaves'], shapeSolo: 'arch', archChance: 0.45, cover: 'framed', labels: true, pageDeco: ['block:arch', 'dateLine'],
   },
   watercolor: {
     name: 'צבעי מים', desc: 'כתמי צבע עדינים בצבעי התמונות',
     bg: '#fdfbf7', text: '#3b3a4a', accent: 'auto',
     font: 'Bellefair', titleWeight: 400, bodyWeight: 400,
     margin: 15, gap: 6, frame: 'white', radius: 0, shadow: true, tilt: 1.2,
-    bgStyle: 'watercolor', deco: [], cover: 'framed', labels: true,
+    bgStyle: 'watercolor', deco: [], cover: 'framed', labels: true, pageDeco: ['dateLine'],
   },
   scrapbook: {
     name: 'סקרפבוק', desc: 'נייר קראפט, וואשי טייפ וקשקושים',
     bg: '#d8c3a0', text: '#3e2f22', accent: '#d2553f', accent2: '#3f7f8c',
     font: 'Amatic SC', titleWeight: 700, bodyWeight: 700,
     margin: 14, gap: 9, frame: 'white', radius: 0, shadow: true, tilt: 5,
-    bgStyle: 'kraft', deco: ['washi', 'doodles'], cover: 'framed', allowOverlap: true, labels: true,
+    bgStyle: 'kraft', deco: ['washi', 'doodles'], cover: 'framed', allowOverlap: true, labels: true, pageDeco: ['dateLine'],
   },
   vintage: {
     name: 'וינטג׳ פולארויד', desc: 'נייר ישן, פולארואידים וסלוטייפ',
     bg: '#eee3cc', text: '#4a3b2a', accent: '#a0522d',
     font: 'Amatic SC', titleWeight: 700, bodyWeight: 700,
     margin: 16, gap: 9, frame: 'polaroid', radius: 0, shadow: true, tilt: 4,
-    bgStyle: 'paper', deco: ['tape'], cover: 'framed', allowOverlap: true,
+    bgStyle: 'paper', deco: ['tape'], cover: 'framed', allowOverlap: true, pageDeco: ['dateLine'],
   },
   film: {
     name: 'סרט קולנוע', desc: 'רקע כהה ופריימים של פילם',
     bg: '#101010', text: '#f2efe8', accent: '#e8a33d',
     font: 'Karantina', titleWeight: 700, bodyWeight: 400,
     margin: 12, gap: 4, frame: 'film', radius: 0, shadow: false, tilt: 0,
-    bgStyle: 'film', deco: [], cover: 'full', fullBleedSolo: true, labels: true,
+    bgStyle: 'film', deco: [], cover: 'full', fullBleedSolo: true, labels: true, pageDeco: ['dateLine', 'filmEdge'],
   },
   modern: {
     name: 'מודרני כהה', desc: 'רקע שחור, תמונות מלאות, דרמטי',
     bg: '#141414', text: '#f4f1ea', accent: '#e9b44c',
     font: 'Rubik', titleWeight: 700, bodyWeight: 300,
     margin: 9, gap: 2.5, frame: 'none', radius: 0, shadow: false, tilt: 0,
-    bgStyle: 'plain', deco: [], cover: 'full', fullBleedSolo: true,
+    bgStyle: 'plain', deco: [], cover: 'full', fullBleedSolo: true, pageDeco: ['block:rect', 'bigNumber', 'dateLine'],
   },
   colorful: {
     name: 'צבעוני', desc: 'צבעי רקע מהתמונות, פינות מעוגלות',
     bg: 'auto', text: '#2a2a2a', accent: 'auto',
     font: 'Secular One', titleWeight: 400, bodyWeight: 400,
     margin: 13, gap: 5, frame: 'none', radius: 5, shadow: true, tilt: 0,
-    bgStyle: 'plain', deco: ['blobs'], shapeSolo: 'round', cover: 'framed',
+    bgStyle: 'plain', deco: ['blobs'], shapeSolo: 'round', cover: 'framed', pageDeco: ['block:circle', 'dateLine'],
   },
   magazine: {
     name: 'מגזין', desc: 'כותרות ענק, פס צבע, תמונות עד הקצה',
     bg: '#ffffff', text: '#111111', accent: '#d9432b',
     font: 'Heebo', titleWeight: 900, bodyWeight: 400,
     margin: 10, gap: 3, frame: 'none', radius: 0, shadow: false, tilt: 0,
-    bgStyle: 'plain', deco: ['bars'], cover: 'magazine', fullBleedSolo: true, pageNumbers: true, labels: true,
+    bgStyle: 'plain', deco: ['bars'], cover: 'magazine', fullBleedSolo: true, pageNumbers: true, labels: true, pageDeco: ['block:band', 'dateLine'],
   },
 };
 for (const [id, t] of Object.entries(THEMES)) t.id = id;
@@ -656,7 +656,7 @@ export async function renderPage(canvas, page, env) {
   const M = theme.margin * k;
   const fam = theme.font;
   const texts = [];
-  const g = { W, H, B, PW, PH, M, k, r, colors, page, texts };
+  const g = { W, H, B, PW, PH, M, k, r, colors, page, texts, pageNumber: env.pageNumber };
   const slots = [];
 
   drawBackground(ctx, W, H, colors, theme, k, r, env, page);
@@ -679,6 +679,7 @@ export async function renderPage(canvas, page, env) {
       drawPhoto(ctx, img, p, { x: 0, y: 0, w: W, h: H }, theme, k, r, { full: true, noTilt: true, crop: cropOf(0), colors, caption: page.captions?.[page.photos[0]] || null, captionInset: M + B });
       slots.push({ x: 0, y: 0, w: W, h: H, index: 0 });
     } else {
+      drawPageDecoUnder(ctx, theme, colors, g, r, page, tpl);
       const cx = B + M - gap / 2, cy = B + M - gap / 2;
       const cw = PW - 2 * M + gap, ch = PH - 2 * M + gap;
       const imgs = await Promise.all(tpl.slots.map((s, i) => load(photoOf(page.photos[i]), s.w * cw, s.h * ch)));
@@ -698,6 +699,7 @@ export async function renderPage(canvas, page, env) {
       });
     }
     drawOverlayDeco(ctx, theme, colors, g, r, page);
+    drawPageDecoOver(ctx, theme, colors, g, r, page, tpl);
     if (page.label && (theme.labels || page.text?.label) && !tpl.full) {
       textGroup(ctx, g, 'label', B + PW - M, B + M * 0.5, () => label(ctx, page.label, theme, colors, g));
     }
@@ -715,11 +717,11 @@ export async function renderPage(canvas, page, env) {
         color: tpl.full ? '#fff' : colors.text, shadow: tpl.full, gold: theme.goldText && !tpl.full,
       }));
     }
-    if (theme.deco.includes('bars') && !tpl.full) {
+    if (theme.deco.includes('bars') && !tpl.full && !page.label) { // the label takes this spot when present
       ctx.fillStyle = colors.accent;
       ctx.fillRect(B + PW - M - 14 * k, B + M * 0.4, 14 * k, 1.2 * k);
     }
-    if (theme.pageNumbers && env.pageNumber && !tpl.full) {
+    if (theme.pageNumbers && env.pageNumber && !tpl.full && !(theme.pageDeco || []).includes('bigNumber')) {
       const left = env.pageNumber % 2 === 0;
       drawText(ctx, String(env.pageNumber), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * 0.45, {
         size: 3.2 * k, weight: 400, family: fam, color: colors.text, maxW: 20 * k,
@@ -769,6 +771,110 @@ function pageTitle(ctx, page, theme, colors, g, cy) {
 function toRGBA(c, a) {
   const [r, g2, b] = hex2rgb(toHex(c));
   return `rgba(${r},${g2},${b},${a})`;
+}
+
+// ---------- interior page decoration ----------
+const dateFmtDay = new Intl.DateTimeFormat('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+const dateFmtMonth = new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' });
+function pageDateText(page, photoOf) {
+  const ds = page.photos.map(id => photoOf(id)?.date).filter(Boolean).sort((a, b) => a - b);
+  if (!ds.length) return '';
+  const a = new Date(ds[0]), b = new Date(ds[ds.length - 1]);
+  return a.toDateString() === b.toDateString() ? dateFmtDay.format(a) : dateFmtMonth.format(a);
+}
+
+// shapes drawn behind the photos (tinted with the accent color)
+function drawPageBlock(ctx, kind, theme, colors, g, r) {
+  const { B, PW, PH, M, k } = g;
+  const bg = hex2rgb(toHex(colors.bg)), ac = hex2rgb(toHex(colors.accent2 || colors.accent));
+  const tint = colors.dark ? css(mix(bg, [255, 255, 255], 0.13)) : css(mix(ac, bg, kind === 'soft' ? 0.88 : 0.8));
+  ctx.save();
+  ctx.fillStyle = tint;
+  const side = r() < 0.5;
+  if (kind === 'rect' || kind === 'soft') {
+    const w = PW * (0.42 + r() * 0.16);
+    ctx.fillRect(side ? B : B + PW - w, B, w, PH);
+    if (kind === 'rect') {
+      ctx.fillStyle = colors.accent;
+      ctx.fillRect(side ? B + w - 0.6 * k : B + PW - w, B + PH * 0.1, 0.6 * k, PH * 0.8);
+    }
+  } else if (kind === 'band') {
+    const h = PH * (0.32 + r() * 0.12), y = B + PH * (0.25 + r() * 0.3);
+    ctx.fillRect(B, y, PW + 2 * B, h);
+  } else if (kind === 'circle') {
+    const R = Math.min(PW, PH) * (0.36 + r() * 0.1);
+    ctx.beginPath();
+    ctx.arc(B + PW * (side ? 0.28 : 0.72), B + PH * (0.35 + r() * 0.3), R, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === 'arch') {
+    const w = PW * 0.62, h = PH * 0.84;
+    shapePath(ctx, 'arch', B + (PW - w) / 2 + (side ? -1 : 1) * PW * 0.08, B + PH - h, w, h);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawPageDecoUnder(ctx, theme, colors, g, r, page, tpl) {
+  const deco = theme.pageDeco || [];
+  if (tpl.full) return;
+  const block = deco.find(d => d.startsWith('block:'));
+  if (block && page.decoBlock !== false && (page.decoBlock || r() < 0.65)) drawPageBlock(ctx, block.slice(6), theme, colors, g, r);
+}
+
+function drawPageDecoOver(ctx, theme, colors, g, r, page, tpl) {
+  const deco = theme.pageDeco || [];
+  const { B, PW, PH, M, k } = g;
+  if (tpl.full) return;
+  if (deco.includes('frameLines')) {
+    const i = M * 0.42;
+    ctx.save();
+    ctx.strokeStyle = colors.accent; ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 0.3 * k;
+    ctx.strokeRect(B + i, B + i, PW - 2 * i, PH - 2 * i);
+    ctx.lineWidth = 0.12 * k;
+    const j = i + 1.1 * k;
+    ctx.strokeRect(B + j, B + j, PW - 2 * j, PH - 2 * j);
+    ctx.restore();
+  }
+  if (deco.includes('filmEdge')) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    const hw = 1.8 * k, hh = 1.2 * k, step = 4.2 * k;
+    for (let x = B + step / 2; x < B + PW; x += step) {
+      for (const y of [B + M * 0.25, B + PH - M * 0.25 - hh]) { shapePath(ctx, 'round', x, y, hw, hh, 0.3 * k); ctx.fill(); }
+    }
+    ctx.restore();
+  }
+  if (deco.includes('bigNumber') && g.pageNumber) {
+    const left = g.pageNumber % 2 === 0;
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    drawText(ctx, String(g.pageNumber).padStart(2, '0'), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * 0.5, {
+      size: Math.min(M * 0.6, 7 * k), weight: 700, family: theme.font, color: colors.accent, maxW: M * 2, align: left ? 'left' : 'right',
+    });
+    ctx.restore();
+  }
+  // a small date line in the bottom margin (unless the page already has a caption)
+  if (deco.includes('dateLine') && !page.caption && page.showDate === true && M >= 8 * k) {
+    const text = pageDateText(page, g.photoOf);
+    if (text) {
+      const y = B + PH - M * 0.48;
+      textGroup(ctx, g, 'date', B + PW / 2, y, () => {
+        const s = drawText(ctx, text, B + PW / 2, y, { size: Math.min(M * 0.32, 4.2 * k), weight: theme.bodyWeight, family: theme.font, color: colors.accent, maxW: PW * 0.5, gold: theme.goldText });
+        ctx.save();
+        ctx.font = `${theme.bodyWeight} ${s}px "${theme.font}"`;
+        const w = ctx.measureText(text).width;
+        ctx.strokeStyle = theme.goldText ? goldGradient(ctx, B, y, PW, 1) : colors.accent;
+        ctx.globalAlpha = 0.6; ctx.lineWidth = 0.2 * k;
+        const gap = 3 * k, len = 9 * k;
+        ctx.beginPath();
+        ctx.moveTo(B + PW / 2 - w / 2 - gap, y); ctx.lineTo(B + PW / 2 - w / 2 - gap - len, y);
+        ctx.moveTo(B + PW / 2 + w / 2 + gap, y); ctx.lineTo(B + PW / 2 + w / 2 + gap + len, y);
+        ctx.stroke();
+        ctx.restore();
+      });
+    }
+  }
 }
 
 // a framed hero photo with title underneath (used by most covers/chapters)

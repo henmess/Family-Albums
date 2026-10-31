@@ -1,7 +1,7 @@
 // Automatic album layout: chooses page templates, groups photos into
 // chapters (events) and assigns photos to slots so cropping is minimal.
-import { isIncluded } from './analyze.js?v=10';
-import { uid } from './db.js?v=10';
+import { isIncluded } from './analyze.js?v=11';
+import { uid } from './db.js?v=11';
 
 export function rng(seed) {
   let a = seed >>> 0;
@@ -173,6 +173,7 @@ export function generateAlbum(allPhotos, settings, theme) {
   const weights = DENSITY[settings.density] || DENSITY.normal;
 
   let lastTpl = null;
+  let lastDay = null;
   const events = splitEvents(photos);
   for (const ev of events) {
     let flow = ev;
@@ -200,6 +201,10 @@ export function generateAlbum(allPhotos, settings, theme) {
       lastTpl = choice.template;
       const page = { id: uid(), type: 'photos', ...choice, variant: r() };
       if (i === 0 && !hasChapter && events.length > 1) page.label = eventTitle(ev);
+      // a small date line on the first page of each new day (unless a title already says it)
+      const day = new Date(group[0].date).toDateString();
+      if (day !== lastDay && !page.label && !(i === 0 && hasChapter)) page.showDate = true;
+      lastDay = day;
       pages.push(page);
       i += n;
     }

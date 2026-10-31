@@ -1,7 +1,7 @@
-import * as db from './db.js?v=10';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=10';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=10';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=10';
+import * as db from './db.js?v=11';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=11';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=11';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=11';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -364,6 +364,8 @@ function renderPhotos() {
   $('#dedupRow').classList.toggle('hidden', !has);
   $$('#dedupSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === (state.album.dedup || 'normal')));
   $('#toDesignRow').classList.toggle('hidden', !has);
+  $('#designBar').classList.toggle('hidden', !has);
+  $('#designBarCount').textContent = `${photos.filter(isIncluded).length} תמונות נבחרו לאלבום`;
   const inc = photos.filter(isIncluded).length;
   const dups = photos.filter(p => p.duplicate).length;
   const weak = photos.filter(p => p.weak && !p.duplicate).length;
@@ -507,6 +509,18 @@ $$('#dedupSeg button').forEach(b => b.onclick = async () => {
 });
 
 $('#toDesignBtn').onclick = () => { location.hash = `#album/${state.album.id}/design`; };
+$('#designBarBtn').onclick = () => { location.hash = `#album/${state.album.id}/design`; window.scrollTo(0, 0); };
+
+// ---- "back to top" button ----
+const toTop = $('#toTop');
+const syncTop = () => {
+  toTop.classList.toggle('show', window.scrollY > 500);
+  document.documentElement.style.setProperty('--topbar', $('.topbar').offsetHeight + 'px');
+};
+window.addEventListener('scroll', syncTop, { passive: true });
+window.addEventListener('resize', syncTop);
+syncTop();
+toTop.onclick = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
 // ---------------- design tab ----------------
 let renderToken = 0;
@@ -560,10 +574,13 @@ async function renderThemePicker() {
   const wrap = $('#themePicker');
   wrap.innerHTML = '';
   const cover = a.pages?.find(p => p.type === 'cover');
+  // show an inside page too, not just the cover
+  const inner = a.pages?.find(p => p.type === 'photos' && p.photos.length >= 2 && !templateById(p.template)?.full)
+    || a.pages?.find(p => p.type === 'photos');
   for (const [id, t] of Object.entries(THEMES)) {
     const b = document.createElement('button');
     b.className = 'theme-card' + (id === a.theme ? ' active' : '');
-    b.innerHTML = `<canvas></canvas><div><strong>${t.name}</strong><small>${t.desc}</small></div>`;
+    b.innerHTML = `<div class="previews"><canvas></canvas><canvas></canvas></div><div><strong>${t.name}</strong><small>${t.desc}</small></div>`;
     b.onclick = async () => {
       if (a.theme === id) return;
       a.theme = id;
@@ -573,12 +590,12 @@ async function renderThemePicker() {
       renderThemePicker();
     };
     wrap.appendChild(b);
-    if (cover) {
-      const f = formatOf(a);
-      renderPage(b.querySelector('canvas'), { ...cover, style: null, bg: null, shapes: null }, {
-        format: f, theme: t, album: a, photosById: photosById(), pxPerMm: 260 / f.w, getImage: thumbBitmap,
-      }).catch(() => {});
-    }
+    const f = formatOf(a);
+    const [c1, c2] = b.querySelectorAll('canvas');
+    const env = { format: f, theme: t, album: a, photosById: photosById(), pxPerMm: 200 / f.w, getImage: thumbBitmap };
+    const clean = pg => ({ ...pg, style: null, bg: null, shapes: null });
+    if (cover) renderPage(c1, clean(cover), env).catch(() => {});
+    if (inner) renderPage(c2, clean(inner), { ...env, pageNumber: 2 }).catch(() => {}); else c2.remove();
   }
 }
 
@@ -1283,6 +1300,11 @@ function edUpdatePanel() {
     chk.querySelector('input').onchange = e => { if (e.target.checked) delete pg.titleBox; else pg.titleBox = false; edRender(); };
     tx.append(chk);
     field('כיתוב בתחתית העמוד', pg.caption, v => pg.caption = v, 'למשל: סבתא וסבא בחתונה');
+    const dchk = document.createElement('label');
+    dchk.className = 'check';
+    dchk.innerHTML = `<input type="checkbox" ${pg.showDate ? 'checked' : ''}> הצגת התאריך בתחתית העמוד (כשאין כיתוב)`;
+    dchk.querySelector('input').onchange = e => { if (e.target.checked) pg.showDate = true; else delete pg.showDate; edRender(); };
+    tx.append(dchk);
     if (edTheme().labels) field('תווית בראש העמוד', pg.label, v => pg.label = v, 'למשל: יולי 2025');
   } else {
     field('כותרת', pg.title, v => pg.title = v);

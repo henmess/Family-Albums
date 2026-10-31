@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Bellefair&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Karantina:wght@400;700&family=Rubik:wght@300;400;500;700&family=Secular+One&family=Suez+One&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=10">
+  <link rel="stylesheet" href="css/style.css?v=11">
 </head>
 <body>
   <header class="topbar">
@@ -44,6 +44,10 @@
 
       <!-- Photos tab -->
       <div id="photosTab" class="tab-panel">
+        <div class="design-bar hidden" id="designBar">
+          <span id="designBarCount"></span>
+          <button class="btn primary" id="designBarBtn">✨ עצבו לי את האלבום ←</button>
+        </div>
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" accept="image/*" multiple hidden>
           <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
@@ -260,9 +264,10 @@
     </div>
   </div>
   <div id="toast" class="toast hidden"></div>
+  <button id="toTop" class="to-top" title="חזרה לראש הדף" aria-label="חזרה לראש הדף">↑</button>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=10"></script>
+  <script type="module" src="js/app.js?v=11"></script>
   <script>
     // if the app didn't start (e.g. an old cached file after an update), offer a refresh
     setTimeout(function () {

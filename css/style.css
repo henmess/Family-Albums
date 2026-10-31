@@ -344,3 +344,30 @@ body.dragging-photo .page .canvas-wrap::after { display: none; }
 }
 .page .canvas-wrap { -webkit-touch-callout: none; }
 .toast-btn { margin-inline-start: 10px; background: #fff; color: #2a2622; border: none; border-radius: 999px; padding: 4px 12px; font: inherit; font-weight: 500; cursor: pointer; }
+
+/* sticky "design the album" bar on the photos tab */
+.design-bar {
+  position: sticky; top: calc(var(--topbar, 60px) + 8px); z-index: 15;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: var(--surface); border-radius: 999px; padding: 8px 8px 8px 8px; padding-inline-start: 20px;
+  box-shadow: 0 6px 20px rgba(60, 40, 20, .14); margin-bottom: 16px; border: 1px solid var(--line);
+}
+.design-bar span { font-weight: 500; color: var(--good); }
+@media (max-width: 720px) {
+  .design-bar { border-radius: 16px; padding: 8px 12px; }
+  .design-bar .btn { flex: 1; }
+}
+
+/* back to top */
+.to-top {
+  position: fixed; left: 18px; bottom: 18px; z-index: 80; width: 48px; height: 48px; border-radius: 50%;
+  border: none; background: var(--primary); color: #fff; font-size: 1.4rem; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25); opacity: 0; transform: translateY(12px); pointer-events: none;
+  transition: opacity .2s, transform .2s;
+}
+.to-top.show { opacity: 1; transform: none; pointer-events: auto; }
+.to-top:hover { filter: brightness(1.1); }
+
+/* theme cards: cover + inside page */
+.theme-card .previews { display: flex; gap: 3px; }
+.theme-card .previews canvas { width: 50%; min-width: 0; flex: 1; }
