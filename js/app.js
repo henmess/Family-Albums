@@ -1,7 +1,7 @@
-import * as db from './db.js?v=15';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=15';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=15';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=15';
+import * as db from './db.js?v=16';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=16';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=16';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=16';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1317,8 +1317,9 @@ function edUpdatePanel() {
     field('שורה נוספת מתחת לכותרת', pg.subtitle, v => { const had = pg.title || pg.subtitle; pg.subtitle = v; selectTitle(had); }, 'למשל: אוגוסט 2025');
     const chk = document.createElement('label');
     chk.className = 'check';
-    chk.innerHTML = `<input type="checkbox" ${pg.titleBox === false ? '' : 'checked'}> רקע מאחורי הכותרת (קריא גם מעל תמונות)`;
-    chk.querySelector('input').onchange = e => { if (e.target.checked) delete pg.titleBox; else pg.titleBox = false; edRender(); };
+    const boxedNow = pg.titleBox ?? edTheme().titlePanel !== false;
+    chk.innerHTML = `<input type="checkbox" ${boxedNow ? 'checked' : ''}> רקע מאחורי הכותרת (קריא גם מעל תמונות)`;
+    chk.querySelector('input').onchange = e => { pg.titleBox = e.target.checked; edRender(); };
     tx.append(chk);
     field('כיתוב בתחתית העמוד', pg.caption, v => pg.caption = v, 'למשל: סבתא וסבא בחתונה');
     const dchk = document.createElement('label');

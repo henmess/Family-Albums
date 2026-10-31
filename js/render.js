@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=15';
+import { templateById, rng } from './layout.js?v=16';
 
 /*
  Theme fields
@@ -86,7 +86,7 @@ export const THEMES = {
     bg: '#ffffff', text: '#141414', accent: 'cycle', accentCycle: ['#ff4d6d', '#3a86ff', '#ffbe0b', '#06d6a0', '#8338ec', '#fb5607'],
     font: 'Heebo', titleWeight: 900, bodyWeight: 400,
     margin: 11, gap: 3.5, frame: 'offset', radius: 0, shadow: false, tilt: 0,
-    bgStyle: 'plain', deco: [], cover: 'magazine', fullBleedSolo: true, labels: true,
+    bgStyle: 'plain', deco: [], cover: 'magazine', fullBleedSolo: true, labels: true, titlePanel: false,
     pageDeco: ['block:diag', 'bigNumber', 'sideLabel'],
   },
   pastel: {
@@ -855,7 +855,7 @@ function pageTitle(ctx, page, theme, colors, g, cy) {
   const big = theme.font === 'Amatic SC' || theme.font === 'Karantina';
   const ts = PH * (big ? 0.085 : 0.06), ss = PH * (big ? 0.042 : 0.03);
   const hasSub = !!page.subtitle;
-  const boxed = page.titleBox !== false;
+  const boxed = page.titleBox ?? theme.titlePanel !== false;
   ctx.save();
   ctx.direction = 'rtl';
   const tw = page.title ? (ctx.font = `${theme.titleWeight} ${fitFont(ctx, page.title, theme.titleWeight, fam, ts, PW * 0.8)}px "${fam}"`, ctx.measureText(page.title).width) : 0;
@@ -1128,19 +1128,16 @@ async function renderChapter(ctx, page, env, theme, g) {
     const cy = B + PH * (pos === 'top' ? 0.24 : pos === 'bottom' ? 0.76 : 0.5);
     const big = theme.font === 'Karantina';
     textGroup(ctx, g, 'title', B + PW / 2, cy, () => {
-      if (theme.id === 'magazine') {
-        // bold color stripe behind the chapter title
-        ctx.save();
-        ctx.globalAlpha = 0.9;
-        ctx.fillStyle = colors.accent;
-        ctx.fillRect(0, cy - PH * 0.1, W, PH * (page.subtitle ? 0.25 : 0.2));
-        ctx.restore();
-      }
       if (theme.deco.includes('bars')) {
         ctx.fillStyle = colors.accent;
         ctx.fillRect(B + PW / 2 - 15 * k, cy - PH * 0.13, 30 * k, 2 * k);
       }
       drawText(ctx, page.title || '', B + PW / 2, cy, { size: PH * (big ? 0.17 : 0.11), weight: theme.titleWeight, family: fam, color: '#fff', maxW: PW * 0.85, shadow: true });
+      if (theme.id === 'magazine') {
+        // a slim accent line instead of a block over the photo
+        ctx.fillStyle = colors.accent;
+        ctx.fillRect(B + PW / 2 - 16 * k, cy + PH * 0.062, 32 * k, 1.4 * k);
+      }
       drawText(ctx, page.subtitle || '', B + PW / 2, cy + PH * 0.1, { size: PH * 0.045, weight: theme.bodyWeight, family: fam, color: '#fff', maxW: PW * 0.8, shadow: true });
     });
     return;
