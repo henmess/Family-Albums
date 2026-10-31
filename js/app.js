@@ -1,7 +1,7 @@
-import * as db from './db.js?v=20';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=20';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=20';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=20';
+import * as db from './db.js?v=21';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=21';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=21';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=21';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
