@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=22';
+import { templateById, rng } from './layout.js?v=23';
 
 /*
  Theme fields
@@ -850,7 +850,7 @@ export async function renderPage(canvas, page, env) {
     const overPhoto = (page.type === 'cover' && theme.cover !== 'framed') || (page.type === 'chapter' && theme.fullBleedSolo);
     const cy = B + PH - Math.max(M * (theme.bgStyle === 'navygold' ? 0.68 : 0.45), overPhoto ? 9 * k : 4 * k);
     textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawCaption(ctx, page, theme, colors, g, cy, {
-      size: page.type === 'end' ? Math.min(8 * k, M * 0.55) : Math.max(overPhoto ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: theme.font, maxW: PW - 2 * M,
+      size: page.type === 'end' ? Math.min(11 * k, M * 0.72) : Math.max(overPhoto ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: theme.font, maxW: PW - 2 * M,
       color: overPhoto ? '#fff' : colors.text, shadow: overPhoto, outline: overPhoto ? 'rgba(0,0,0,0.5)' : null, gold: theme.goldText && !overPhoto,
     }));
   }
@@ -1214,12 +1214,13 @@ function renderEnd(ctx, page, env, theme, g) {
   const sub = page.subtitle ?? (page.quote ? '' : (album.yearRange || ''));
   const big = theme.frame === 'polaroid' || theme.font === 'Amatic SC' || theme.font === 'Karantina';
   // the closing page has lots of room – use big, generous lettering
-  textGroup(ctx, g, 'title', B + PW / 2, B + PH * 0.45, () => {
-    const ts = drawText(ctx, text, B + PW / 2, B + PH * 0.45, { size: PH * (big ? 0.14 : 0.1), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.84, gold: theme.goldText });
-    const dy = B + PH * 0.45 + ts * 0.75 + PH * 0.02;
-    ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 3 * k, dy, 6 * k, 6 * k) : colors.accent;
-    ctx.beginPath(); ctx.arc(B + PW / 2, dy, 2 * k, 0, Math.PI * 2); ctx.fill();
-    drawText(ctx, sub, B + PW / 2, dy + PH * 0.075, { size: PH * (big ? 0.075 : 0.055), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.84, gold: theme.goldText });
+  const ty = B + PH * 0.42;
+  textGroup(ctx, g, 'title', B + PW / 2, ty, () => {
+    const ts = drawText(ctx, text, B + PW / 2, ty, { size: PH * (big ? 0.2 : 0.14), weight: theme.titleWeight, family: fam, color: colors.text, maxW: PW * 0.88, gold: theme.goldText });
+    const dy = ty + ts * 0.72 + PH * 0.025;
+    ctx.fillStyle = theme.goldText ? goldGradient(ctx, B + PW / 2 - 4 * k, dy, 8 * k, 8 * k) : colors.accent;
+    ctx.beginPath(); ctx.arc(B + PW / 2, dy, 2.8 * k, 0, Math.PI * 2); ctx.fill();
+    drawText(ctx, sub, B + PW / 2, dy + PH * 0.1, { size: PH * (big ? 0.105 : 0.078), weight: theme.bodyWeight, family: fam, color: colors.accent, maxW: PW * 0.88, gold: theme.goldText });
   });
 }
 
