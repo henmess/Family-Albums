@@ -53,10 +53,18 @@
         <div id="progress" class="progress hidden"><div class="bar"></div><span class="label"></span></div>
 
         <div id="photoStats" class="stats hidden"></div>
+        <div class="dedup-row hidden" id="dedupRow">
+          <span>סינון תמונות דומות:</span>
+          <div class="seg" id="dedupSeg">
+            <button data-v="light" title="רק תמונות כמעט זהות">עדין</button>
+            <button data-v="normal" title="מומלץ">רגיל</button>
+            <button data-v="strong" title="גם תמונות מאותו רגע עם הבדלים קטנים">חזק</button>
+          </div>
+        </div>
         <div class="filters hidden" id="filters">
           <button class="chip active" data-filter="all">הכול</button>
           <button class="chip" data-filter="in">נבחרו</button>
-          <button class="chip" data-filter="dup">כפילויות</button>
+          <button class="chip" data-filter="dup">תמונות דומות</button>
           <button class="chip" data-filter="weak">חלשות</button>
           <span class="hint">לחיצה על תמונה מכניסה/מוציאה אותה מהאלבום</span>
         </div>

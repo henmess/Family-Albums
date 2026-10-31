@@ -107,6 +107,8 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
 .stats span { color: var(--muted); font-size: .85rem; }
 .stats .good b { color: var(--good); }
 
+.dedup-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; font-size: .9rem; color: var(--muted); }
+.dedup-row .seg { min-width: 260px; }
 .filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 14px; }
 .chip { font: inherit; font-size: .88rem; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
 .chip.active { background: var(--text); color: #fff; border-color: var(--text); }

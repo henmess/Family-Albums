@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { analyzeFile, curate, isIncluded } from './analyze.js';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js';
 import { generateAlbum, rerollPage, templateById } from './layout.js';
 import { THEMES, renderPage, ensureFonts } from './render.js';
 
@@ -138,7 +138,31 @@ async function openAlbum(id, tab) {
   $('#homeView').classList.add('hidden');
   $('#albumView').classList.remove('hidden');
   $('#albumName').textContent = state.album.name;
+  await upgradeFeatures();
   showTab(tab);
+}
+
+// photos uploaded with an older version get the new similarity fingerprints
+async function upgradeFeatures() {
+  const old = state.photos.filter(p => p.feat?.v !== FEAT_VERSION);
+  if (!old.length) return;
+  const prog = $('#progress');
+  prog.classList.remove('hidden');
+  let i = 0;
+  for (const p of old) {
+    prog.querySelector('.label').textContent = `משדרג את זיהוי הכפילויות… ${++i} מתוך ${old.length}`;
+    prog.querySelector('.bar').style.width = `${(i / old.length) * 100}%`;
+    try { p.feat = await featuresFromBlob(p.thumb); await db.updatePhoto(p); } catch (e) { console.warn(e); }
+  }
+  const before = state.photos.filter(isIncluded).length;
+  await recurate();
+  prog.classList.add('hidden');
+  const after = state.photos.filter(isIncluded).length;
+  if (after !== before) {
+    markChanged();
+    toast(`זיהוי הכפילויות שודרג – סוננו עוד ${before - after} תמונות דומות`, 5000);
+  }
+  await db.saveAlbum(state.album);
 }
 
 $('#albumName').addEventListener('blur', async () => {
@@ -213,7 +237,7 @@ async function addFiles(files) {
 
 async function recurate() {
   const before = new Map(state.photos.map(p => [p.id, `${p.duplicate}|${p.weak}|${p.dupGroup}`]));
-  curate(state.photos);
+  curate(state.photos, state.album.dedup || 'normal');
   for (const p of state.photos) {
     if (before.get(p.id) !== `${p.duplicate}|${p.weak}|${p.dupGroup}`) await db.updatePhoto(p);
   }
@@ -229,6 +253,8 @@ function renderPhotos() {
   const has = photos.length > 0;
   $('#photoStats').classList.toggle('hidden', !has);
   $('#filters').classList.toggle('hidden', !has);
+  $('#dedupRow').classList.toggle('hidden', !has);
+  $$('#dedupSeg button').forEach(b => b.classList.toggle('active', b.dataset.v === (state.album.dedup || 'normal')));
   $('#toDesignRow').classList.toggle('hidden', !has);
   const inc = photos.filter(isIncluded).length;
   const dups = photos.filter(p => p.duplicate).length;
@@ -247,7 +273,7 @@ function renderPhotos() {
     if (state.filter === 'weak') return p.weak;
     return true;
   });
-  if (state.filter === 'dup') filtered.sort((a, b) => (a.dupGroup > b.dupGroup ? 1 : -1) || b.quality.score - a.quality.score);
+  if (state.filter === 'dup') filtered.sort((a, b) => String(a.dupGroup).localeCompare(String(b.dupGroup)) || (a.duplicate - b.duplicate) || b.quality.score - a.quality.score);
 
   const groupColors = new Map();
   const palette = ['#e76f51', '#2a9d8f', '#8e44ad', '#e9c46a', '#3a86ff', '#ff006e', '#06d6a0', '#8338ec'];
@@ -302,6 +328,16 @@ $$('#filters .chip').forEach(c => c.onclick = () => {
   state.filter = c.dataset.filter;
   $$('#filters .chip').forEach(x => x.classList.toggle('active', x === c));
   renderPhotos();
+});
+
+$$('#dedupSeg button').forEach(b => b.onclick = async () => {
+  const before = state.photos.filter(isIncluded).length;
+  state.album.dedup = b.dataset.v;
+  await recurate();
+  markChanged();
+  renderPhotos();
+  const after = state.photos.filter(isIncluded).length;
+  toast(`${after} תמונות נבחרו (${after - before >= 0 ? '+' : ''}${after - before})`);
 });
 
 $('#toDesignBtn').onclick = () => { location.hash = `#album/${state.album.id}/design`; };
