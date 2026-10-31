@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=23';
+import { templateById, rng } from './layout.js?v=24';
 
 /*
  Theme fields
@@ -866,7 +866,8 @@ function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
   const overPhoto = !!opt.shadow;
   // keep a multi-line list inside the bottom margin by shrinking it if needed
   const avail = g.M * 0.85;
-  let size = opt.size, widths, rows, dot, dotGap, itemGap;
+  // bullets read better a bit larger than a plain caption (still kept inside the margin)
+  let size = overPhoto ? opt.size * 1.35 : Math.min(opt.size * 1.35, g.M * 0.62), widths, rows, dot, dotGap, itemGap;
   for (let tries = 0; tries < 8; tries++) {
     ctx.save();
     ctx.direction = 'rtl';
