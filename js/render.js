@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=14';
+import { templateById, rng } from './layout.js?v=15';
 
 /*
  Theme fields
@@ -309,7 +309,7 @@ function placeTop(page, g, id, autoTop) {
   return top;
 }
 
-function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 'center', shadow = false, baseline = 'middle', gold = false }) {
+function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 'center', shadow = false, baseline = 'middle', gold = false, outline = null }) {
   if (!text) return 0;
   ctx.save();
   ctx.direction = 'rtl';
@@ -327,6 +327,15 @@ function drawText(ctx, text, x, y, { size, weight, family, color, maxW, align = 
     ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = s * 0.45; ctx.shadowOffsetY = s * 0.04;
     ctx.fillText(text, x, y);
     ctx.shadowColor = 'rgba(0,0,0,0.55)'; ctx.shadowBlur = s * 0.1; ctx.shadowOffsetY = s * 0.03;
+  }
+  if (outline) {
+    // a thin line around the letters so small text stays visible on busy photos
+    ctx.save();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = outline; ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(1, s * 0.16);
+    ctx.strokeText(text, x, y);
+    ctx.restore();
   }
   ctx.fillText(text, x, y);
   ctx.restore();
@@ -1075,7 +1084,19 @@ async function renderCover(ctx, page, env, theme, g) {
         ctx.fillStyle = colors.accent;
         ctx.fillRect(B + PW - M - 30 * k, y0 + PH * 0.08, 30 * k, 2.2 * k);
       }
-      if (sub2) drawText(ctx, sub2, B + PW - M, y0 + PH * (sub ? 0.2 : 0.13), { size: PH * 0.036, weight: 400, family: fam, color: '#fff', maxW: PW - 2 * M, align: 'right', shadow: true });
+      if (sub2) {
+        const fs2 = PH * 0.034, ty2 = y0 + PH * (sub ? 0.19 : 0.12);
+        ctx.save();
+        ctx.font = `700 ${fitFont(ctx, sub2, 700, fam, fs2, PW - 2 * M)}px "${fam}"`;
+        const w2 = ctx.measureText(sub2).width;
+        const bx = B + PW - M - w2 - fs2 * 0.9, bw = w2 + fs2 * 0.9, bh = fs2 * 1.6;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(bx, ty2, bw, bh);
+        ctx.strokeStyle = colors.accent; ctx.lineWidth = Math.max(1, 0.5 * k);
+        ctx.strokeRect(bx, ty2, bw, bh);
+        ctx.restore();
+        drawText(ctx, sub2, B + PW - M - fs2 * 0.45, ty2 + bh / 2, { size: fs2, weight: 700, family: fam, color: '#141414', maxW: PW - 2 * M, align: 'right' });
+      }
     });
     return;
   }
@@ -1087,8 +1108,8 @@ async function renderCover(ctx, page, env, theme, g) {
     drawText(ctx, title, B + PW - M * 1.5, y0, { size: PH * (big ? 0.16 : 0.1), weight: 700, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right', shadow: true });
     ctx.fillStyle = colors.accent;
     ctx.fillRect(B + PW - M * 1.5 - 18 * k, y0 + PH * 0.065, 18 * k, 0.9 * k);
-    drawText(ctx, sub, B + PW - M * 1.5, y0 + PH * 0.095, { size: PH * (big ? 0.06 : 0.04), weight: 300, family: fam, color: '#f0f0f0', maxW: PW - 3 * M, align: 'right', shadow: true });
-    if (sub2) drawText(ctx, sub2, B + PW - M * 1.5, y0 + PH * (sub ? 0.15 : 0.095), { size: PH * (big ? 0.045 : 0.032), weight: 300, family: fam, color: '#e8e8e8', maxW: PW - 3 * M, align: 'right', shadow: true });
+    drawText(ctx, sub, B + PW - M * 1.5, y0 + PH * 0.095, { size: PH * (big ? 0.06 : 0.04), weight: big ? 400 : 300, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right', shadow: true, outline: 'rgba(0,0,0,0.55)' });
+    if (sub2) drawText(ctx, sub2, B + PW - M * 1.5, y0 + PH * (sub ? 0.15 : 0.095), { size: PH * (big ? 0.045 : 0.034), weight: 400, family: fam, color: '#fff', maxW: PW - 3 * M, align: 'right', shadow: true, outline: 'rgba(0,0,0,0.6)' });
   });
 }
 
