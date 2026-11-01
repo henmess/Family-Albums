@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=25';
+import { templateById, rng } from './layout.js?v=26';
 
 /*
  Theme fields
@@ -859,7 +859,33 @@ export async function renderPage(canvas, page, env) {
 
 // bottom caption: plain text, or a row of bullet points ("a, b, c" -> • a  • b  • c)
 function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
-  if (!page.captionBullets) { drawText(ctx, page.caption, g.B + g.PW / 2, cy, opt); return; }
+  const roomy = page.type !== 'photos'; // title pages have room above the bottom caption
+  if (!page.captionBullets) {
+    // wrap a long caption onto more lines (growing upward from the bottom) instead of shrinking it to nothing
+    let size = opt.size, lines;
+    for (let tries = 0; tries < 8; tries++) {
+      ctx.save();
+      ctx.direction = 'rtl';
+      ctx.font = `${opt.weight} ${size}px "${opt.family}"`;
+      const words = page.caption.split(/\s+/).filter(Boolean);
+      lines = [];
+      let cur = '';
+      for (const w of words) {
+        const t = cur ? cur + ' ' + w : w;
+        if (cur && ctx.measureText(t).width > opt.maxW) { lines.push(cur); cur = w; } else cur = t;
+      }
+      if (cur) lines.push(cur);
+      ctx.restore();
+      const maxLines = roomy || opt.shadow ? 3 : 2;
+      const fitsMargin = roomy || opt.shadow || lines.length * size * 1.3 <= g.M * 0.9;
+      if (lines.length <= maxLines && fitsMargin) break;
+      size *= 0.9;
+    }
+    const lh = size * 1.3;
+    const y0 = growDown ? cy : cy - (lines.length - 1) * lh;
+    lines.forEach((ln, i) => drawText(ctx, ln, g.B + g.PW / 2, y0 + i * lh, { ...opt, size }));
+    return;
+  }
   const items = page.caption.split(/[,،\n•·|]+/).map(t => t.trim()).filter(Boolean);
   if (!items.length) return;
   const { k } = g;
@@ -884,13 +910,14 @@ function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
       row.push(i);
     });
     if (row.length) rows.push({ row, rw });
-    if (overPhoto || rows.length === 1 || rows.length * size * 1.45 <= avail || size < 2.4 * k) break;
+    if (overPhoto || rows.length === 1 || (roomy && rows.length <= 3) || rows.length * size * 1.45 <= avail || size < 2.4 * k) break;
     size *= 0.88;
   }
   opt = { ...opt, size };
   const lineH = size * 1.45;
   // the last row sits on cy (rows grow upward), or the first row when the caption is at the top
-  const y0 = growDown ? cy : overPhoto ? cy - (rows.length - 1) * lineH : cy - (rows.length - 1) * lineH / 2;
+  // rows grow upward from the bottom line so nothing falls off the page
+  const y0 = growDown ? cy : (overPhoto || roomy) ? cy - (rows.length - 1) * lineH : cy - (rows.length - 1) * lineH / 2;
   rows.forEach(({ row, rw }, ri) => {
     const y = y0 + ri * lineH;
     let x = g.B + g.PW / 2 + rw / 2; // right edge of the row (RTL)
