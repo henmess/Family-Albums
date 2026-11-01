@@ -404,6 +404,7 @@ export function curate(photos, level = 'normal') {
 }
 
 export function isIncluded(p) {
+  if (p.raster) return false; // a whole page restored from a PDF, not a photo
   if (p.manual === 'in') return true;
   if (p.manual === 'out') return false;
   return !p.duplicate && !p.weak;

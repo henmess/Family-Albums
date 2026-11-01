@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=32';
+import { templateById, rng } from './layout.js?v=33';
 
 /*
  Theme fields
@@ -772,6 +772,15 @@ export async function renderPage(canvas, page, env) {
   const g = { W, H, B, PW, PH, M, k, r, colors, page, texts, pageNumber: env.pageNumber };
   const slots = [];
 
+  if (page.type === 'raster') {
+    // a page restored from an older PDF: draw the saved page image exactly
+    const p = photosById.get(page.photos[0]);
+    let img = null;
+    try { img = p ? await env.getImage(p, W, H) : null; } catch (e) { console.warn(e); }
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+    if (img) ctx.drawImage(img, 0, 0, W, H);
+    return { slots: [{ x: 0, y: 0, w: W, h: H, index: 0 }], texts: [] };
+  }
   drawBackground(ctx, W, H, colors, theme, k, r, env, page);
 
   const photoOf = id => photosById.get(id);

@@ -1,7 +1,7 @@
-import * as db from './db.js?v=32';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=32';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=32';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=32';
+import * as db from './db.js?v=33';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=33';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=33';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=33';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -179,7 +179,7 @@ async function repairPhotos() {
 
 // photos uploaded with an older version get the new similarity fingerprints
 async function upgradeFeatures() {
-  const old = state.photos.filter(p => p.feat?.v !== FEAT_VERSION);
+  const old = state.photos.filter(p => !p.raster && p.feat?.v !== FEAT_VERSION);
   if (!old.length) return;
   const prog = $('#progress');
   prog.classList.remove('hidden');
@@ -363,19 +363,19 @@ async function addFiles(files) {
 
 async function recurate() {
   const before = new Map(state.photos.map(p => [p.id, `${p.duplicate}|${p.weak}|${p.dupGroup}`]));
-  curate(state.photos, state.album.dedup || 'normal');
+  curate(state.photos.filter(p => !p.raster), state.album.dedup || 'normal');
   for (const p of state.photos) {
     if (before.get(p.id) !== `${p.duplicate}|${p.weak}|${p.dupGroup}`) await db.updatePhoto(p);
   }
   const a = state.album;
-  a.photoCount = state.photos.length;
+  a.photoCount = state.photos.filter(p => !p.raster).length;
   a.yearRange = yearRange(state.photos.filter(isIncluded));
   const best = [...state.photos].filter(isIncluded).sort((x, y) => y.quality.score - x.quality.score)[0];
   a.coverThumb = best ? best.thumb : null;
 }
 
 function renderPhotos() {
-  const photos = [...state.photos].sort((a, b) => a.date - b.date);
+  const photos = state.photos.filter(p => !p.raster).sort((a, b) => a.date - b.date);
   const has = photos.length > 0;
   $('#photoStats').classList.toggle('hidden', !has);
   $('#filters').classList.toggle('hidden', !has);
@@ -486,7 +486,7 @@ async function bulkSelect(list, mode) {
 }
 
 function visiblePhotos() {
-  const photos = [...state.photos].sort((a, b) => a.date - b.date);
+  const photos = state.photos.filter(p => !p.raster).sort((a, b) => a.date - b.date);
   return photos.filter(p => {
     if (state.filter === 'in') return isIncluded(p);
     if (state.filter === 'dup') return p.dupGroup;
@@ -568,6 +568,7 @@ async function openDesign() {
   }
   if (!a.pages) await regenerate(false);
   renderThemePicker();
+  syncRestoreBtn();
   $('#redesignBanner').classList.toggle('hidden', !a.needsRedesign);
   renderPages();
 }
@@ -604,9 +605,11 @@ async function renderThemePicker() {
       if (a.theme === id) return;
       a.theme = id;
       $$('.theme-card').forEach(x => x.classList.toggle('active', x === b));
-      await regenerate(false);
+      // switching style keeps every page and edit – only the look changes
+      await db.saveAlbum(a);
       renderPages();
       renderThemePicker();
+      toast('הסגנון הוחלף – כל העמודים והשינויים נשמרו. לעיצוב מחדש מלא: "🎲 עיצוב חדש"', 6000);
     };
     wrap.appendChild(b);
     const f = formatOf(a);
@@ -621,11 +624,18 @@ async function renderThemePicker() {
 $('#titleInput').oninput = debounce(async () => { state.album.title = $('#titleInput').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
 $('#subtitleInput').oninput = debounce(async () => { state.album.subtitle = $('#subtitleInput').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
 $('#subtitle2Input').oninput = debounce(async () => { state.album.subtitle2 = $('#subtitle2Input').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
-$('#formatSelect').onchange = async e => { state.album.format = e.target.value; await regenerate(false); renderPages(); renderThemePicker(); };
+// size change keeps the design: layouts are relative, so pages adapt to the new size
+$('#formatSelect').onchange = async e => {
+  state.album.format = e.target.value;
+  await db.saveAlbum(state.album);
+  renderPages(); renderThemePicker();
+  toast('גודל האלבום שונה – העיצוב שלך נשמר', 4000);
+};
 $$('#densitySeg button').forEach(b => b.onclick = async () => {
-  state.album.density = b.dataset.v;
-  $$('#densitySeg button').forEach(x => x.classList.toggle('active', x === b));
-  await regenerate(false); renderPages();
+  if (b.dataset.v === state.album.density) return;
+  const done = await redesignAll(() => { state.album.density = b.dataset.v; });
+  syncDesignControls();
+  if (!done) return;
 });
 $$('#dpiSeg button').forEach(b => b.onclick = () => {
   state.dpi = +b.dataset.v;
@@ -635,13 +645,70 @@ $('#maxPhotos').oninput = updateMaxLabel;
 $('#maxPhotos').onchange = async () => {
   const inc = state.photos.filter(isIncluded).length;
   const v = +$('#maxPhotos').value;
-  state.album.maxPhotos = v >= inc ? 0 : v;
-  await regenerate(false); renderPages();
+  await redesignAll(() => { state.album.maxPhotos = v >= inc ? 0 : v; });
+  syncDesignControls();
 };
-$('#chaptersChk').onchange = async e => { state.album.chapters = e.target.checked; await regenerate(false); renderPages(); };
+$('#chaptersChk').onchange = async e => {
+  const on = e.target.checked;
+  await redesignAll(() => { state.album.chapters = on; });
+  syncDesignControls();
+};
 $('#bleedChk').onchange = async e => { state.album.bleed = e.target.checked ? 3 : 0; await db.saveAlbum(state.album); toast(e.target.checked ? 'יתווספו 3 מ"מ מכל צד בקובץ ההדפסה' : 'ללא שולי חיתוך'); };
-$('#regenBtn').onclick = async () => { await regenerate(true); renderPages(); renderThemePicker(); };
-$('#bannerRegen').onclick = async () => { await regenerate(true); renderPages(); renderThemePicker(); };
+$('#regenBtn').onclick = () => redesignAll(null, { newSeed: true });
+$('#bannerRegen').onclick = () => redesignAll(null, { newSeed: true });
+$('#restoreBtn').onclick = () => restorePrevious();
+
+// ---------- safe full redesign: confirm, keep history, allow undo ----------
+const SETTING_KEYS = ['theme', 'format', 'density', 'chapters', 'maxPhotos', 'seed', 'bleed'];
+function pushHistory(a, label) {
+  if (!a.pages) return;
+  const snap = { at: Date.now(), label, pages: structuredClone(a.pages), settings: Object.fromEntries(SETTING_KEYS.map(k => [k, a[k]])) };
+  a.history = [snap, ...(a.history || [])].slice(0, 5);
+}
+function syncRestoreBtn() {
+  const h = state.album?.history?.[0];
+  $('#restoreBtn').classList.toggle('hidden', !h);
+  if (h) $('#restoreBtn').title = 'חזרה לעיצוב מ-' + new Date(h.at).toLocaleString('he-IL');
+}
+function syncDesignControls() {
+  const a = state.album;
+  $$('#densitySeg button').forEach(b => b.classList.toggle('active', b.dataset.v === a.density));
+  $('#chaptersChk').checked = !!a.chapters;
+  $('#formatSelect').value = a.format;
+  const inc = state.photos.filter(isIncluded).length;
+  $('#maxPhotos').value = a.maxPhotos && a.maxPhotos < inc ? a.maxPhotos : inc;
+  updateMaxLabel();
+  syncRestoreBtn();
+}
+async function redesignAll(change, { newSeed = false } = {}) {
+  const a = state.album;
+  if (a.pages?.length) {
+    const ok = await modal('עיצוב מחדש של כל האלבום', `<p>הפעולה הזו תעצב מחדש את <b>כל העמודים</b>, ושינויים שעשית בעמודים יוחלפו.</p>
+      <p class="small" style="text-align:right">העיצוב הנוכחי נשמר, ואפשר לחזור אליו בכל רגע בכפתור "↺ שחזור העיצוב הקודם".</p>`, 'לעצב מחדש');
+    if (!ok) return false;
+    pushHistory(a, 'לפני עיצוב מחדש');
+  }
+  change?.();
+  await regenerate(newSeed);
+  renderPages(); renderThemePicker(); syncDesignControls();
+  toast('האלבום עוצב מחדש', 7000, { label: 'ביטול', run: restorePrevious });
+  return true;
+}
+async function restorePrevious() {
+  const a = state.album;
+  const h = a.history?.[0];
+  if (!h) { toast('אין עיצוב קודם לשחזור'); return; }
+  a.history = a.history.slice(1);
+  // keep the current design too, so restoring can itself be undone
+  const cur = { at: Date.now(), label: 'לפני שחזור', pages: structuredClone(a.pages || []), settings: Object.fromEntries(SETTING_KEYS.map(k => [k, a[k]])) };
+  a.pages = h.pages;
+  Object.assign(a, h.settings);
+  a.history = [cur, ...a.history].slice(0, 5);
+  a.needsRedesign = false;
+  await db.saveAlbum(a);
+  await openDesign();
+  toast('העיצוב הקודם שוחזר', 5000);
+}
 
 function debounce(fn, ms) {
   let h;
@@ -691,7 +758,7 @@ function renderPages() {
       const el = document.createElement('div');
       el.className = 'page';
       el.dataset.index = i;
-      const label = i === 0 ? 'כריכה' : pg.textPage ? `עמוד טקסט · ${i}` : (PAGE_LABEL[pg.type] ? `${PAGE_LABEL[pg.type]} · ${i}` : `עמוד ${i}`);
+      const label = i === 0 ? 'כריכה' : pg.type === 'raster' ? `עמוד ${i} · מה-PDF` : pg.textPage ? `עמוד טקסט · ${i}` : (PAGE_LABEL[pg.type] ? `${PAGE_LABEL[pg.type]} · ${i}` : `עמוד ${i}`);
       el.innerHTML = `
         <div class="canvas-wrap"><canvas></canvas></div>
         <div class="page-bar">
@@ -875,6 +942,8 @@ async function exportPDF() {
   const k = state.dpi / 25.4;
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: 'mm', format: [pw, ph], orientation: pw >= ph ? 'landscape' : 'portrait', compress: true });
+  // the full design travels inside the PDF, so "load design from PDF" can restore it exactly
+  try { pdf.setProperties({ subject: 'Family album', creator: 'Family Albums', keywords: DESIGN_MARK + encodeDesign(a) }); } catch (e) { console.warn(e); }
   const canvas = document.createElement('canvas');
   const byId = photosById();
   try {
@@ -1143,7 +1212,7 @@ async function movePhoto(from, slot, to, toSlot) {
   const src = a.pages[from], dst = a.pages[to];
   const pid = src.photos[slot];
   if (!dst || dst.type === 'end') { toast('אי אפשר להעביר תמונה לעמוד הסיום'); return; }
-  const single = pg => pg.type === 'cover' || pg.type === 'chapter';
+  const single = pg => pg.type === 'cover' || pg.type === 'chapter' || pg.type === 'raster';
   let removedPage = false;
   if (single(src) || single(dst)) {
     // cover / chapter pages hold one photo, so the two photos swap places
@@ -1450,6 +1519,10 @@ function edUpdatePanel() {
     }
   };
   tx.innerHTML = '';
+  if (pg.type === 'raster') {
+    tx.innerHTML = '<p class="small" style="text-align:right">העמוד הזה שוחזר מקובץ PDF ומוצג בדיוק כמו בקובץ. אפשר להזיז, למחוק או להחליף אותו בתמונה אחרת ("החלפת תמונה"), אבל לא לערוך פרטים בתוכו.</p>';
+    return;
+  }
   if (pg.type === 'cover') {
     field('כותרת', ed.album.title, v => ed.album.title = v);
     field('כותרת משנה', ed.album.subtitle, v => ed.album.subtitle = v);
@@ -1746,7 +1819,7 @@ function renderPicker() {
   const a = state.album;
   const usedOn = new Map();
   (a.pages || []).forEach((pg, i) => (i === ed.index ? ed.page : pg).photos.forEach(id => { if (!usedOn.has(id)) usedOn.set(id, i); }));
-  const all = [...state.photos].sort((x, y) => x.date - y.date);
+  const all = state.photos.filter(p => !p.raster).sort((x, y) => x.date - y.date);
   const unused = all.filter(p => !usedOn.has(p.id));
   const tabs = $$('#pickerTabs button');
   tabs[0].textContent = `לא בשימוש (${unused.length})`;
@@ -1789,6 +1862,137 @@ function renderPicker() {
     grid.appendChild(b);
   }
 }
+
+// ================= design inside PDF: save & restore =================
+const DESIGN_MARK = 'FAMALBUM-DESIGN:';
+const ALBUM_KEYS = ['theme', 'format', 'density', 'chapters', 'maxPhotos', 'seed', 'bleed', 'title', 'subtitle', 'subtitle2', 'dedup'];
+function b64encodeUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64decodeUtf8(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function encodeDesign(a) {
+  const pages = (a.pages || []).filter(p => p.type !== 'raster');
+  return b64encodeUtf8(JSON.stringify({ v: 1, album: Object.fromEntries(ALBUM_KEYS.map(k => [k, a[k]])), pages }));
+}
+
+// pull the JPEG page images out of a PDF made by this site (one image per page, in order)
+function extractPdfJpegs(bytes, text) {
+  const out = [];
+  const re = /\/DCTDecode[\s\S]{0,400}?stream\r?\n/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const start = m.index + m[0].length;
+    const end = text.indexOf('endstream', start);
+    if (end < 0) break;
+    let e = end;
+    while (e > start && (bytes[e - 1] === 0x0a || bytes[e - 1] === 0x0d)) e--;
+    if (bytes[start] === 0xff && bytes[start + 1] === 0xd8) out.push(new Blob([bytes.slice(start, e)], { type: 'image/jpeg' }));
+    re.lastIndex = end;
+  }
+  return out;
+}
+function pdfPageSizeMm(text) {
+  const m = text.match(/\/MediaBox\s*\[\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*\]/);
+  if (!m) return null;
+  return { w: (+m[3] - +m[1]) * 25.4 / 72, h: (+m[4] - +m[2]) * 25.4 / 72 };
+}
+
+async function loadDesignFromPdf(file) {
+  const a = state.album;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const text = new TextDecoder('latin1').decode(bytes);
+  const at = text.indexOf(DESIGN_MARK);
+  let design = null;
+  if (at >= 0) {
+    const b64 = text.slice(at + DESIGN_MARK.length).match(/^[A-Za-z0-9+/=]+/)?.[0];
+    try { design = JSON.parse(b64decodeUtf8(b64)); } catch (e) { console.warn('bad design data', e); }
+  }
+  const have = new Set(state.photos.map(p => p.id));
+  if (design?.pages?.length) {
+    const ids = design.pages.flatMap(p => p.photos || []);
+    const found = ids.filter(id => have.has(id)).length;
+    if (!ids.length || found / ids.length >= 0.8) {
+      const ok = await modal('שחזור העיצוב מה-PDF', `<p>נמצא בקובץ עיצוב מלא של <b>${design.pages.length - 1} עמודים</b> + כריכה, בסגנון "${esc(THEMES[design.album?.theme]?.name || '')}".</p>
+        <p>לטעון אותו לאלבום הזה? אפשר יהיה לערוך אותו כרגיל.</p>
+        <p class="small" style="text-align:right">העיצוב הנוכחי נשמר, ואפשר לחזור אליו בכפתור "↺ שחזור העיצוב הקודם".</p>`, 'לטעון את העיצוב');
+      if (!ok) return;
+      pushHistory(a, 'לפני טעינה מ-PDF');
+      Object.assign(a, design.album || {});
+      // drop photos that are no longer in the album
+      a.pages = design.pages.map(p => ({ ...p, photos: (p.photos || []).filter(id => have.has(id)) }))
+        .filter(p => p.type !== 'photos' || p.photos.length);
+      a.needsRedesign = false;
+      await db.saveAlbum(a);
+      await openDesign();
+      toast(found < ids.length ? `העיצוב נטען (${ids.length - found} תמונות שכבר לא באלבום הושמטו)` : 'העיצוב נטען בדיוק כמו ב-PDF 🎉', 6000);
+      return;
+    }
+  }
+  // older PDF (or from another browser): restore every page as an exact image
+  const jpegs = extractPdfJpegs(bytes, text);
+  if (!jpegs.length) { toast('לא הצלחתי לקרוא את הקובץ. צריך PDF שנוצר באתר הזה.', 7000); return; }
+  const ok = await modal('שחזור מה-PDF', `<p>בקובץ יש <b>${jpegs.length} עמודים</b>.</p>
+    <p>${design ? 'התמונות של העיצוב הזה לא נמצאות באלבום הזה,' : 'הקובץ נוצר לפני שהייתה אפשרות שחזור,'} לכן כל עמוד ייטען <b>כתמונה בדיוק כמו ב-PDF</b> – ייראה ויודפס אותו דבר, אבל לא יהיה אפשר לערוך פרטים בתוך העמודים.</p>
+    <p class="small" style="text-align:right">העיצוב הנוכחי נשמר, ואפשר לחזור אליו בכפתור "↺ שחזור העיצוב הקודם".</p>`, 'לשחזר');
+  if (!ok) return;
+  const prog = toastProgress('משחזר עמודים…');
+  const pages = [];
+  for (let i = 0; i < jpegs.length; i++) {
+    prog(`משחזר עמוד ${i + 1} מתוך ${jpegs.length}…`);
+    const blob = jpegs[i];
+    const bmp = await createImageBitmap(blob);
+    const sc = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const thumb = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.88));
+    const photo = {
+      id: db.uid(), albumId: a.id, name: `pdf-page-${i}.jpg`, size: blob.size, raster: true, manual: null,
+      thumb, width: bmp.width, height: bmp.height, date: Date.now(), hash: [0, 0], focal: { x: 0.5, y: 0.5 }, color: [220, 220, 220],
+      quality: { sharp: 1, exposure: 1, contrast: 1, colorful: 1, resolution: 1, score: 1 },
+    };
+    bmp.close?.();
+    await db.savePhoto(photo, blob);
+    state.photos.push(photo);
+    pages.push({ id: db.uid(), type: 'raster', photos: [photo.id], variant: Math.random() });
+  }
+  pushHistory(a, 'לפני שחזור מ-PDF');
+  // match the album size to the PDF page size (with or without 3 mm bleed)
+  const sz = pdfPageSizeMm(text);
+  if (sz) {
+    let best = null;
+    for (const [key, f] of Object.entries(FORMATS)) for (const bl of [0, 3]) {
+      const d = Math.abs(f.w + 2 * bl - sz.w) + Math.abs(f.h + 2 * bl - sz.h);
+      if (!best || d < best.d) best = { key, bl, d };
+    }
+    if (best && best.d < 8) { a.format = best.key; a.bleed = best.bl; }
+  }
+  a.pages = pages;
+  a.needsRedesign = false;
+  await db.saveAlbum(a);
+  prog(null);
+  await openDesign();
+  toast(`שוחזרו ${pages.length} עמודים בדיוק כמו ב-PDF 🎉`, 6000);
+}
+function toastProgress(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.remove('hidden'); clearTimeout(t._h);
+  return m => { if (m == null) t.classList.add('hidden'); else t.textContent = m; };
+}
+$('#pdfImport').onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  try { await loadDesignFromPdf(f); } catch (err) { console.error(err); toast('אירעה שגיאה בטעינת הקובץ', 6000); }
+};
 
 route().catch(e => { console.error(e); toast('משהו השתבש בטעינה – נסו לרענן את הדף', 8000); });
 window.__albumsReady = true;
