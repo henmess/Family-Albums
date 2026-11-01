@@ -1,8 +1,8 @@
-import * as db from './db.js?v=35';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=35';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=35';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=35';
-import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=35';
+import * as db from './db.js?v=36';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=36';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=36';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=36';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=36';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -594,10 +594,16 @@ async function renderThemePicker() {
   const a = state.album;
   const wrap = $('#themePicker');
   wrap.innerHTML = '';
-  const cover = a.pages?.find(p => p.type === 'cover');
+  const byId = photosById();
+  const usable = pg => pg && pg.photos?.length && pg.photos.every(id => byId.get(id) && !byId.get(id).raster);
+  let cover = a.pages?.find(p => p.type === 'cover' && usable(p));
   // show an inside page too, not just the cover
-  const inner = a.pages?.find(p => p.type === 'photos' && p.photos.length >= 2 && !templateById(p.template)?.full)
-    || a.pages?.find(p => p.type === 'photos');
+  let inner = a.pages?.find(p => p.type === 'photos' && p.photos.length >= 2 && !templateById(p.template)?.full && usable(p))
+    || a.pages?.find(p => p.type === 'photos' && usable(p));
+  // e.g. an album restored from a PDF as page images: build sample pages from its photos
+  const pool = state.photos.filter(p => !p.raster && p.thumb instanceof Blob).sort((x, y) => (isIncluded(y) - isIncluded(x)) || y.quality.score - x.quality.score);
+  if (!cover && pool[0]) cover = { id: 'preview-cover', type: 'cover', photos: [pool[0].id], variant: 0.3 };
+  if (!inner && pool.length >= 3) inner = { id: 'preview-inner', type: 'photos', template: 'duo-cols', photos: [pool[1].id, pool[2].id], variant: 0.6 };
   for (const [id, t] of Object.entries(THEMES)) {
     const b = document.createElement('button');
     b.className = 'theme-card' + (id === a.theme ? ' active' : '');
@@ -764,7 +770,7 @@ function renderPages() {
       const el = document.createElement('div');
       el.className = 'page';
       el.dataset.index = i;
-      const label = i === 0 ? 'כריכה' : pg.type === 'raster' ? `עמוד ${i} · מה-PDF` : pg.textPage ? `עמוד טקסט · ${i}` : (PAGE_LABEL[pg.type] ? `${PAGE_LABEL[pg.type]} · ${i}` : `עמוד ${i}`);
+      const label = i === 0 ? 'כריכה' : pg.type === 'raster' ? `עמוד ${i} · מה-PDF` : pg.blank && !pg.title ? `עמוד ריק · ${i}` : pg.textPage ? `עמוד טקסט · ${i}` : (PAGE_LABEL[pg.type] ? `${PAGE_LABEL[pg.type]} · ${i}` : `עמוד ${i}`);
       el.innerHTML = `
         <div class="canvas-wrap"><canvas></canvas></div>
         <div class="page-bar">
@@ -775,6 +781,7 @@ function renderPages() {
             ${i > 1 ? '<button data-act="up" title="הזזה אחורה">⬅</button>' : ''}
             ${i > 0 && i < pages.length - 1 ? '<button data-act="down" title="הזזה קדימה">➡</button>' : ''}
             ${i < pages.length - 1 ? '<button data-act="add" title="הוספת עמוד אחרי העמוד הזה">➕</button>' : ''}
+            <button data-act="dup" title="שכפול העמוד">⧉</button>
             ${i > 0 ? '<button data-act="del" title="מחיקת העמוד">🗑</button>' : ''}
           </div>
         </div>`;
@@ -839,6 +846,7 @@ async function pageAction(i, act) {
   }
   if (act === 'edit') { openEditor(i); return; }
   if (act === 'add') { addPageAt(i + 1); return; }
+  if (act === 'dup') { duplicatePage(i); return; }
   if (act === 'shuffle') {
     const ids = [...pg.photos];
     for (let k = ids.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [ids[k], ids[j]] = [ids[j], ids[k]]; }
@@ -1135,6 +1143,27 @@ function relayoutPage(pg) {
   pg.variant = Math.random();
 }
 
+// copy a page (all its photos, texts and settings) right after itself
+async function duplicatePage(i) {
+  const a = state.album;
+  const src = a.pages[i];
+  if (!src) return;
+  const before = structuredClone(a.pages);
+  const copy = { ...structuredClone(src), id: db.uid() };
+  // a second cover would be confusing – the copy becomes an opening page with the album name
+  if (copy.type === 'cover') Object.assign(copy, { type: 'chapter', title: a.title || a.name || '', subtitle: a.subtitle || '' });
+  // the closing page stays last: its copy is a text page
+  if (copy.type === 'end' && i === a.pages.length - 1) copy.textPage = true;
+  const at = i === a.pages.length - 1 ? i : i + 1;
+  a.pages.splice(at, 0, copy);
+  await db.saveAlbum(a);
+  renderPages();
+  let msg = 'העמוד שוכפל – העותק נמצא מיד אחריו';
+  if ((a.pages.length - 1) % 2) msg += ' · שימו לב: מספר עמודים אי-זוגי';
+  toast(msg, 6000, { label: 'ביטול', run: async () => { a.pages = before; await db.saveAlbum(a); renderPages(); } });
+  setTimeout(() => $(`#pages .page[data-index="${at}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+}
+
 // insert a new page at position `at` (asks what kind of page)
 async function addPageAt(at) {
   const a = state.album;
@@ -1147,6 +1176,7 @@ async function addPageAt(at) {
       <label><input type="radio" name="kind" value="photos" ${at === 0 ? '' : 'checked'}><b>🖼️ עמוד תמונות</b><small>בוחרים תמונה, ואפשר להוסיף עוד בעריכה</small></label>
       <label><input type="radio" name="kind" value="chapter"><b>📖 פתיחת פרק</b><small>תמונה ראשית עם כותרת גדולה</small></label>
       <label><input type="radio" name="kind" value="text"><b>✍️ עמוד טקסט</b><small>כותרת וטקסט, בלי תמונות</small></label>
+      <label><input type="radio" name="kind" value="blank"><b>⬜ עמוד ריק</b><small>עמוד בסגנון האלבום, בלי תמונות ובלי טקסט – אפשר להוסיף לו טקסט אחר כך</small></label>
     </div>`, 'המשך');
   if (!body) return;
   const kind = body.querySelector('input[name=kind]:checked').value;
@@ -1155,6 +1185,8 @@ async function addPageAt(at) {
   let page;
   if (kind === 'text') {
     page = { id: db.uid(), type: 'end', textPage: true, photos: [], title: 'כותרת', subtitle: '', variant: Math.random() };
+  } else if (kind === 'blank') {
+    page = { id: db.uid(), type: 'end', textPage: true, blank: true, photos: [], title: '', subtitle: '', variant: Math.random() };
   } else {
     ed.index = -1; // the picker is not tied to an open editor here
     const id = await pickPhoto();
@@ -1584,7 +1616,7 @@ async function openEditor(i) {
   ed.sel = ed.page.photos.length === 1 ? 0 : null;
   ed.selText = null;
   ed.swap = false;
-  const label = i === 0 ? 'כריכה' : ed.page.textPage ? 'עמוד טקסט' : ({ chapter: 'פתיחת פרק', end: 'עמוד סיום' }[ed.page.type] || 'עמוד');
+  const label = i === 0 ? 'כריכה' : ed.page.blank && !ed.page.title ? 'עמוד ריק' : ed.page.textPage ? 'עמוד טקסט' : ({ chapter: 'פתיחת פרק', end: 'עמוד סיום' }[ed.page.type] || 'עמוד');
   $('#edTitle').textContent = `${label} · ${i === 0 ? '' : i + ' מתוך ' + (a.pages.length - 1)}`.replace(/ · $/, '');
   $('#edPrev').disabled = i === 0;
   $('#edNext').disabled = i >= a.pages.length - 1;

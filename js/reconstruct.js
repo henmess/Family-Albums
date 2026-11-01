@@ -1,8 +1,8 @@
 // Rebuilds an editable design from a PDF page image that this site produced
 // earlier: finds the layout + which album photos sit where, and (optionally)
 // reads the titles/captions with Hebrew OCR.
-import { TEMPLATES, templateById } from './layout.js?v=35';
-import { THEMES } from './render.js?v=35';
+import { TEMPLATES, templateById } from './layout.js?v=36';
+import { THEMES } from './render.js?v=36';
 
 const S = 16; // fingerprint grid
 

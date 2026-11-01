@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=35';
+import { templateById, rng } from './layout.js?v=36';
 
 /*
  Theme fields
@@ -1229,6 +1229,7 @@ function renderEnd(ctx, page, env, theme, g) {
   const { B, PW, PH, k, r, colors } = g;
   const fam = theme.font;
   drawOverlayDeco(ctx, theme, colors, g, r, page);
+  if (page.blank && !page.title && !page.subtitle) return; // an empty page: style and decorations only
   const text = page.title || (page.quote ? 'הרגעים הקטנים הם הגדולים באמת' : 'נוצר באהבה');
   const sub = page.subtitle ?? (page.quote ? '' : (album.yearRange || ''));
   const big = theme.frame === 'polaroid' || theme.font === 'Amatic SC' || theme.font === 'Karantina';
