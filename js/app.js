@@ -1,7 +1,7 @@
-import * as db from './db.js?v=29';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=29';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=29';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=29';
+import * as db from './db.js?v=30';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=30';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=30';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=30';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1625,6 +1625,52 @@ $('#edAdd').onclick = async () => {
   edUpdatePanel(); edRender();
 };
 $('#edAuto').onclick = () => { relayout(ed.page.photos, ed.page.template); edUpdatePanel(); edRender(); };
+// copy a page's look (style, background, texts and their size/position) from another album
+const PAGE_KIND = p => p.type === 'cover' ? 'כריכה' : p.type === 'chapter' ? 'פתיחת פרק' : p.type === 'end' ? (p.textPage ? 'עמוד טקסט' : 'עמוד סיום') : 'עמוד תמונות';
+$('#edCopyFrom').onclick = async () => {
+  const others = (await db.listAlbums()).filter(x => x.id !== state.album.id && x.pages?.length);
+  if (!others.length) { toast('אין עדיין אלבום אחר מעוצב להעתיק ממנו'); return; }
+  const cur = ed.page, curIdx = ed.index, curLast = curIdx === state.album.pages.length - 1;
+  // suggest the matching page: same kind, and the last page for the last page
+  const suggest = al => {
+    if (curLast) return al.pages.length - 1;
+    if (cur.type === 'cover') return 0;
+    const same = al.pages.findIndex((p, i) => i > 0 && p.type === cur.type);
+    return same >= 0 ? same : Math.min(curIdx, al.pages.length - 1);
+  };
+  const optsFor = al => al.pages.map((p, i) => `<option value="${i}" ${i === suggest(al) ? 'selected' : ''}>${i === 0 ? 'כריכה' : `עמוד ${i} · ${PAGE_KIND(p)}`}${p.title ? ' – ' + esc(p.title).slice(0, 30) : ''}</option>`).join('');
+  const body = await modal('העתקת עיצוב מאלבום אחר', `
+    <label class="lbl">מאיזה אלבום?</label>
+    <select class="input" id="cpAlbum">${others.map(al => `<option value="${al.id}">${esc(al.name)}</option>`).join('')}</select>
+    <label class="lbl">מאיזה עמוד?</label>
+    <select class="input" id="cpPage">${optsFor(others[0])}</select>
+    <p class="small" style="text-align:right">יועתקו: הסגנון, צבע הרקע, הכותרות והכיתוב, וגודל ומיקום הטקסט. התמונות של העמוד הזה לא ישתנו – אחרי ההעתקה אפשר לשנות את הטקסט.</p>`, 'העתקה');
+  if (body) { /* handled below */ }
+  else return;
+  const al = others.find(x => x.id === body.querySelector('#cpAlbum').value);
+  const src = al.pages[+body.querySelector('#cpPage').value];
+  if (!src) return;
+  for (const key of ['style', 'bg', 'title', 'subtitle', 'caption', 'captionBullets', 'showDate', 'titleBox', 'text', 'variant', 'quote', 'label']) {
+    if (src[key] === undefined) delete ed.page[key]; else ed.page[key] = structuredClone(src[key]);
+  }
+  if (cur.type === 'end' && src.type === 'end') { if (src.textPage) ed.page.textPage = true; else delete ed.page.textPage; }
+  if (cur.type === 'cover' && src.type === 'cover') {
+    ed.album.title = al.title; ed.album.subtitle = al.subtitle; ed.album.subtitle2 = al.subtitle2;
+  }
+  ed.selText = null;
+  edUpdatePanel(); edRender();
+  toast('העיצוב הועתק – עכשיו אפשר לשנות את הטקסט בחלק "טקסט" ואז "שמירה"', 6000);
+};
+// refresh the page list when another album is chosen in the copy dialog
+document.addEventListener('change', async e => {
+  if (e.target.id !== 'cpAlbum') return;
+  const al = (await db.listAlbums()).find(x => x.id === e.target.value);
+  if (!al) return;
+  const curLast = ed.index === state.album.pages.length - 1;
+  const idx = curLast ? al.pages.length - 1 : ed.page.type === 'cover' ? 0 : Math.max(0, al.pages.findIndex((p, i) => i > 0 && p.type === ed.page.type));
+  $('#cpPage').innerHTML = al.pages.map((p, i) => `<option value="${i}" ${i === idx ? 'selected' : ''}>${i === 0 ? 'כריכה' : `עמוד ${i} · ${PAGE_KIND(p)}`}${p.title ? ' – ' + esc(p.title).slice(0, 30) : ''}</option>`).join('');
+});
+
 $('#edVariant').onclick = () => { ed.page.variant = Math.random(); edRender(); };
 
 // ---------- photo picker ----------
