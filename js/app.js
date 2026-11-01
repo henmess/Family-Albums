@@ -1,8 +1,8 @@
-import * as db from './db.js?v=42';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=42';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=42';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=42';
-import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=42';
+import * as db from './db.js?v=43';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=43';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=43';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=43';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=43';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -998,6 +998,124 @@ function offerPdf(blob, name, asciiName = name) {
     if (!w) toast('הדפדפן חסם פתיחת לשונית – נסו "הורדה למכשיר"', 5000);
   });
 }
+
+// ================= JPEG spreads export =================
+// file 1: cover (left) + back page (right); then one file per pair of inside pages
+async function loadJsZip() {
+  if (window.JSZip) return window.JSZip;
+  await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+  return window.JSZip;
+}
+
+async function exportSpreads() {
+  const a = state.album;
+  if (!a.pages?.length) return;
+  const pages = a.pages;
+  const lastIsBack = pages.length > 1 && pages[pages.length - 1].type === 'end';
+  const back = lastIsBack ? pages.length - 1 : null;
+  const inside = pages.map((_, i) => i).filter(i => i !== 0 && i !== back);
+  const nSpreads = Math.ceil(inside.length / 2);
+  const body = await modal('ייצוא כתמונות JPEG', `
+    <p>ייווצרו <b>${nSpreads + 1} קבצי JPEG</b>:</p>
+    <ul style="text-align:right;margin:4px 0 10px;padding-inline-start:20px">
+      <li>קובץ 1: <b>הכריכה משמאל</b> ו<b>הדף האחורי מימין</b>${lastIsBack ? '' : ' (אין עמוד סיום – הצד האחורי יהיה ריק)'}</li>
+      <li>${nSpreads} קבצים של זוגות עמודים (${inside.length} עמודים פנימיים${inside.length % 2 ? ' – בזוג האחרון יהיה עמוד ריק' : ''})</li>
+    </ul>
+    <label class="lbl">סדר העמודים בכל זוג</label>
+    <div class="add-kinds">
+      <label><input type="radio" name="dir" value="rtl" checked><b>עברית</b><small>העמוד הראשון בזוג מימין (1 מימין, 2 משמאל)</small></label>
+      <label><input type="radio" name="dir" value="ltr"><b>לועזית</b><small>העמוד הראשון בזוג משמאל (1 משמאל, 2 מימין)</small></label>
+    </div>
+    <p class="small" style="text-align:right">איכות: ${state.dpi} DPI${a.bleed ? ' · כולל שולי חיתוך מסביב לכל זוג' : ''}. הקבצים יגיעו בקובץ ZIP אחד.</p>`, 'ייצוא');
+  if (!body) return;
+  const rtl = body.querySelector('input[name=dir]:checked').value === 'rtl';
+  const btn = $('#exportSpreadsBtn');
+  btn.disabled = true;
+  const label0 = btn.textContent;
+  const f = formatOf(a), bleed = a.bleed || 0, k = state.dpi / 25.4;
+  const B = Math.round(bleed * k), PW = Math.round(f.w * k), PH = Math.round(f.h * k);
+  const byId = photosById();
+  const blankPage = { id: 'blank', type: 'end', blank: true, photos: [], variant: 0.5 };
+  // one page rendered with bleed; spreads drop the bleed at the fold
+  const renderOne = async (i) => {
+    const c = document.createElement('canvas');
+    const opened = [];
+    await renderPage(c, i == null ? blankPage : pages[i], {
+      format: f, theme: themeOf(a), album: a, photosById: byId, bleed, pxPerMm: k, pageNumber: i ?? 0,
+      getImage: async (p, w, h) => { const b = await loadFull(p, w, h); opened.push(b); return b; },
+    });
+    for (const b of opened) if (b && !thumbSet.has(b)) b.close?.();
+    return c;
+  };
+  const makeSpread = async (leftIdx, rightIdx) => {
+    const L = await renderOne(leftIdx), R = await renderOne(rightIdx);
+    const out = document.createElement('canvas');
+    out.width = 2 * PW + 2 * B; out.height = PH + 2 * B;
+    const x = out.getContext('2d');
+    // left page keeps its outer (left) bleed, right page its outer (right) bleed
+    x.drawImage(L, 0, 0, B + PW, L.height, 0, 0, B + PW, out.height);
+    x.drawImage(R, B, 0, PW + B, R.height, B + PW, 0, PW + B, out.height);
+    L.width = L.height = R.width = R.height = 1;
+    const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', 0.93));
+    out.width = out.height = 1;
+    return blob;
+  };
+  const files = [];
+  const pad = n => String(n).padStart(2, '0');
+  try {
+    btn.textContent = `מכין כריכה ואחורי…`;
+    files.push({ name: '00_cover-and-back.jpg', blob: await makeSpread(0, back) });
+    for (let sIdx = 0; sIdx < nSpreads; sIdx++) {
+      const first = inside[sIdx * 2], second = inside[sIdx * 2 + 1] ?? null;
+      btn.textContent = `מכין זוג ${sIdx + 1} מתוך ${nSpreads}…`;
+      const [left, right] = rtl ? [second, first] : [first, second];
+      const n1 = sIdx * 2 + 1, n2 = sIdx * 2 + 2;
+      files.push({ name: `${pad(sIdx + 1)}_pages-${n1}-${second == null ? 'blank' : n2}.jpg`, blob: await makeSpread(left, right) });
+      await new Promise(r => setTimeout(r, 0));
+    }
+    btn.textContent = 'אורז קבצים…';
+    const JSZip = await loadJsZip();
+    const zip = new JSZip();
+    files.forEach(fl => zip.file(fl.name, fl.blob, { binary: true, compression: 'STORE' }));
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const latin = (a.name || '').replace(/[^A-Za-z0-9 _-]/g, '').trim().replace(/\s+/g, '-');
+    offerSpreads(zipBlob, files, `${latin || 'family-album'}-spreads-${stamp}.zip`);
+  } catch (e) {
+    console.error(e);
+    toast('אירעה שגיאה ביצירת התמונות. נסו "איכות טובה" (200 DPI).', 7000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label0;
+  }
+}
+
+function offerSpreads(zipBlob, files, zipName) {
+  const url = URL.createObjectURL(zipBlob);
+  const jpgFiles = files.map(fl => new File([fl.blob], fl.name, { type: 'image/jpeg' }));
+  const canShare = !!(navigator.canShare && navigator.canShare({ files: jpgFiles }));
+  const mb = (zipBlob.size / 1048576).toFixed(1);
+  modal('התמונות מוכנות 🎉', `
+    <p class="pdf-info">${files.length} קבצי JPEG · ${mb} MB<br><span class="small">${esc(files[0].name)} … ${esc(files[files.length - 1].name)}</span></p>
+    <div class="pdf-actions">
+      <button class="btn primary big full" id="zipDownload">⬇️ הורדת כל התמונות (ZIP)</button>
+      ${canShare ? '<button class="btn ghost big full" id="jpgShare">📤 שמירה / שליחה של התמונות</button>' : ''}
+    </div>
+    ${isIOS && canShare ? '<p class="small">💡 באייפון: "שמירה / שליחה" ← <b>"שמור X תמונות"</b> שומר אותן ישר לתמונות, או בחרו "שמור בקבצים".</p>' : ''}`, 'סגירה')
+    .then(() => setTimeout(() => URL.revokeObjectURL(url), 60000));
+  $('#modalCancel').classList.add('hidden');
+  $('#modalOk').addEventListener('click', () => $('#modalCancel').classList.remove('hidden'), { once: true });
+  $('#zipDownload').addEventListener('click', () => {
+    const el = document.createElement('a');
+    el.href = url; el.download = zipName; document.body.appendChild(el); el.click(); el.remove();
+  });
+  $('#jpgShare')?.addEventListener('click', async () => {
+    try { await navigator.share({ files: jpgFiles }); }
+    catch (e) { if (e.name !== 'AbortError') toast('השיתוף לא הצליח – נסו להוריד את קובץ ה-ZIP', 5000); }
+  });
+}
+$('#exportSpreadsBtn').onclick = exportSpreads;
 
 async function exportPDF() {
   const a = state.album;
