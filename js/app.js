@@ -1,8 +1,8 @@
-import * as db from './db.js?v=38';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=38';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=38';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=38';
-import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=38';
+import * as db from './db.js?v=41';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=41';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=41';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=41';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=41';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1930,6 +1930,33 @@ function encodeDesign(a) {
 }
 
 // pull the JPEG page images out of a PDF made by this site (one image per page, in order)
+// render every PDF page with pdf.js – exact page order and content, whatever app saved the file
+async function renderPdfPagesWithPdfJs(bytes) {
+  const src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+  if (!window.pdfjsLib) {
+    await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+  }
+  const lib = window.pdfjsLib;
+  lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const doc = await lib.getDocument({ data: bytes.slice() }).promise;
+  const out = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    const page = await doc.getPage(n);
+    const vp1 = page.getViewport({ scale: 1 });
+    // ~300 dpi, capped to keep memory reasonable
+    const scale = Math.min(300 / 72, 3600 / Math.max(vp1.width, vp1.height));
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    out.push(await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92)));
+    c.width = c.height = 1;
+    page.cleanup();
+  }
+  await doc.destroy();
+  return out;
+}
+
 // read the page images in real page order: page tree -> page -> content stream -> "/Ix Do" -> image object.
 // (a PDF stores an image once even when two pages are identical, and apps may reorder objects)
 async function pdfPageImages(bytes, text) {
@@ -2061,9 +2088,13 @@ async function loadDesignFromPdf(file) {
     }
   }
   // older PDF (or from another browser): rebuild an editable design, or keep pages as exact images
+  const prog0 = toastProgress('קורא את עמודי ה-PDF…');
   let jpegs = null;
-  try { jpegs = await pdfPageImages(bytes, text); } catch (e) { console.warn('page tree read failed', e); }
-  if (!jpegs) jpegs = extractPdfJpegs(bytes, text);
+  // 1) render the pages like a PDF viewer (most reliable), 2) read the page tree, 3) plain image scan
+  try { jpegs = await renderPdfPagesWithPdfJs(bytes); } catch (e) { console.warn('pdf.js failed', e); }
+  if (!jpegs?.length) { try { jpegs = await pdfPageImages(bytes, text); } catch (e) { console.warn('page tree read failed', e); } }
+  if (!jpegs?.length) jpegs = extractPdfJpegs(bytes, text);
+  prog0(null);
   if (!jpegs.length) { toast('לא הצלחתי לקרוא את הקובץ. צריך PDF שנוצר באתר הזה.', 7000); return; }
   const canRebuild = !design && state.photos.some(p => !p.raster);
   const choice = await modal('שחזור מה-PDF', `<p>בקובץ יש <b>${jpegs.length} עמודים</b>.</p>
@@ -2109,7 +2140,7 @@ async function loadDesignFromPdf(file) {
   const themeVotes = {};
   const albumText = {};
   let rebuilt = 0;
-  const prepared = mode === 'edit' ? await preparePhotos(state.photos.filter(p => !p.raster && p.thumb instanceof Blob)) : [];
+  const prepared = mode === 'edit' ? await preparePhotos(state.photos.filter(p => !p.raster && p.thumb instanceof Blob), isIncluded) : [];
   const usedPhotos = new Set();
   for (let i = 0; i < jpegs.length; i++) {
     prog(`${mode === 'edit' ? 'מזהה' : 'משחזר'} עמוד ${i + 1} מתוך ${jpegs.length}…`);
@@ -2131,11 +2162,18 @@ async function loadDesignFromPdf(file) {
           try {
             prog(`קורא טקסט בעמוד ${i + 1} מתוך ${jpegs.length}…`);
             const overPhoto = res.kind === 'full' || (page.type === 'cover' && THEMES[res.theme]?.cover !== 'framed') || (page.type === 'chapter' && THEMES[res.theme]?.fullBleedSolo);
-            const lines = await readText(bmp, { photoBg: overPhoto });
+            // the style's bottom/top margin bands (where captions and labels live)
+            const th0 = THEMES[res.theme] || THEMES.classic, Htot = fmt.h + 2 * bleed;
+            const full0 = page.type === 'photos' && page.template === 'solo-full';
+            const bottomBand = full0 ? [0.84, 1] : [Math.max(0.5, 1 - (bleed + th0.margin * 1.02) / Htot), 1 - bleed * 0.5 / Htot];
+            const topBand = [bleed * 0.5 / Htot, Math.min(0.5, (bleed + th0.margin * 1.02) / Htot)];
+            const lines = await readText(bmp, { photoBg: overPhoto, bottomBand, topBand });
             const boxes = page.type === 'photos' ? boxesFor(page.template, res.theme, fmt, bleed) : page.type === 'end' ? [] : boxesFor(null, res.theme, fmt, bleed);
             const f = assignText(page, lines, { theme: res.theme, format: fmt, bleed, boxes, isCover: page.type === 'cover' });
             // years misread by one digit (2075 for 2025) -> the nearest year of the album's photos
-            const years = [...new Set(state.photos.filter(p => !p.raster).map(p => new Date(p.date).getFullYear()))];
+            const yc = {};
+            state.photos.filter(p => !p.raster && isIncluded(p)).forEach(p => { const y = new Date(p.date).getFullYear(); yc[y] = (yc[y] || 0) + 1; });
+            const years = Object.keys(yc).map(Number).sort((y1, y2) => yc[y2] - yc[y1]); // most common first
             const fixYears = t2 => t2 && t2.replace(/\b(19|20)\d\d\b|\b\d{4}\b/g, y => {
               if (years.includes(+y)) return y;
               const near = years.find(Y => [...String(Y)].filter((ch, i2) => ch !== y[i2]).length === 1);

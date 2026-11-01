@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=38';
+import { templateById, rng } from './layout.js?v=41';
 
 /*
  Theme fields
@@ -135,6 +135,13 @@ const mix = (c, d, t) => c.map((v, i) => Math.round(v * (1 - t) + d[i] * t));
 const css = (c, a = 1) => a === 1 ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const lum = c => (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255;
+
+// bottom-margin text position (in margins): inside decorative frame lines when the style has them
+export function bottomTextPos(theme) {
+  if (theme.bgStyle === 'navygold') return 0.68;
+  if ((theme.pageDeco || []).includes('frameLines')) return 0.72; // frame lines sit at ~0.42 of the margin
+  return 0.45;
+}
 
 export function effectiveTheme(page, albumTheme) {
   return (page.style && THEMES[page.style]) || albumTheme;
@@ -835,7 +842,7 @@ export async function renderPage(canvas, page, env) {
       // on a full-page photo keep the caption away from the subject
       // the bottom caption always stays at the bottom of the page (also on full-page photos)
       const top = false;
-      const cy = top ? B + Math.max(M * 0.9, 9 * k) : B + PH - Math.max(M * (theme.bgStyle === 'navygold' ? 0.68 : 0.45), tpl.full ? 9 * k : 0);
+      const cy = top ? B + Math.max(M * 0.9, 9 * k) : B + PH - Math.max(M * bottomTextPos(theme), tpl.full ? 9 * k : 0);
       textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawCaption(ctx, page, theme, colors, g, cy, {
         size: Math.max(tpl.full ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: fam, maxW: PW - 2 * M,
         color: tpl.full ? '#fff' : colors.text, shadow: tpl.full, gold: theme.goldText && !tpl.full,
@@ -847,7 +854,7 @@ export async function renderPage(canvas, page, env) {
     }
     if (theme.pageNumbers && env.pageNumber && !tpl.full && !(theme.pageDeco || []).includes('bigNumber')) {
       const left = env.pageNumber % 2 === 0;
-      drawText(ctx, String(env.pageNumber), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * 0.45, {
+      drawText(ctx, String(env.pageNumber), left ? B + M * 0.5 : B + PW - M * 0.5, B + PH - M * bottomTextPos(theme), {
         size: 3.2 * k, weight: 400, family: fam, color: colors.text, maxW: 20 * k,
       });
     }
@@ -861,7 +868,7 @@ export async function renderPage(canvas, page, env) {
   // a bottom caption on cover / chapter / end pages (photo pages draw their own)
   if (page.type !== 'photos' && page.caption) {
     const overPhoto = (page.type === 'cover' && theme.cover !== 'framed') || (page.type === 'chapter' && theme.fullBleedSolo);
-    const cy = B + PH - Math.max(M * (theme.bgStyle === 'navygold' ? 0.68 : 0.45), overPhoto ? 9 * k : 4 * k);
+    const cy = B + PH - Math.max(M * bottomTextPos(theme), overPhoto ? 9 * k : 4 * k);
     textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawCaption(ctx, page, theme, colors, g, cy, {
       size: page.type === 'end' ? Math.min(11 * k, M * 0.72) : Math.max(overPhoto ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: theme.font, maxW: PW - 2 * M,
       color: overPhoto ? '#fff' : colors.text, shadow: overPhoto, outline: overPhoto ? 'rgba(0,0,0,0.5)' : null, gold: theme.goldText && !overPhoto,
@@ -1066,7 +1073,7 @@ function drawPageDecoOver(ctx, theme, colors, g, r, page, tpl) {
   if (deco.includes('dateLine') && !page.caption && page.showDate === true && M >= 8 * k) {
     const text = pageDateText(page, g.photoOf);
     if (text) {
-      const y = B + PH - M * 0.48;
+      const y = B + PH - M * Math.max(0.48, bottomTextPos(theme));
       textGroup(ctx, g, 'date', B + PW / 2, y, () => {
         const s = drawText(ctx, text, B + PW / 2, y, { size: Math.min(M * 0.32, 4.2 * k), weight: theme.bodyWeight, family: theme.font, color: colors.accent, maxW: PW * 0.5, gold: theme.goldText });
         ctx.save();
