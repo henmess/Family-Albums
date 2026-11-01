@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=24';
+import { templateById, rng } from './layout.js?v=25';
 
 /*
  Theme fields

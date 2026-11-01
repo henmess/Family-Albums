@@ -395,3 +395,17 @@ body.dragging-photo .page .canvas-wrap::after { display: none; }
 .pdf-info { color: var(--muted); font-size: .9rem; margin: 0 0 12px; word-break: break-all; }
 .pdf-actions { display: flex; flex-direction: column; gap: 8px; }
 .pdf-actions .btn { text-align: center; text-decoration: none; display: block; }
+
+/* add a page between spreads */
+.add-between {
+  font: inherit; display: inline-flex; align-items: center; gap: 8px; margin: -14px auto; padding: 6px 16px;
+  border: 2px dashed #cfc5b6; border-radius: 999px; background: var(--surface); color: var(--muted); cursor: pointer;
+  font-size: .85rem; opacity: .75; transition: opacity .2s, border-color .2s, color .2s;
+}
+.add-between span { font-size: 1.1rem; font-weight: 700; color: var(--primary); }
+.add-between:hover, .add-between:focus-visible { opacity: 1; border-color: var(--primary); color: var(--primary); }
+.add-kinds { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.add-kinds label { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px; cursor: pointer; }
+.add-kinds label:has(input:checked) { border-color: var(--primary); background: #eef6f4; }
+.add-kinds input { grid-row: span 2; accent-color: var(--primary); }
+.add-kinds small { color: var(--muted); }

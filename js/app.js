@@ -1,7 +1,7 @@
-import * as db from './db.js?v=24';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=24';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=24';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=24';
+import * as db from './db.js?v=25';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=25';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=25';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=25';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -691,7 +691,7 @@ function renderPages() {
       const el = document.createElement('div');
       el.className = 'page';
       el.dataset.index = i;
-      const label = i === 0 ? 'כריכה' : (PAGE_LABEL[pg.type] ? `${PAGE_LABEL[pg.type]} · ${i}` : `עמוד ${i}`);
+      const label = i === 0 ? 'כריכה' : pg.textPage ? `עמוד טקסט · ${i}` : (PAGE_LABEL[pg.type] ? `${PAGE_LABEL[pg.type]} · ${i}` : `עמוד ${i}`);
       el.innerHTML = `
         <div class="canvas-wrap"><canvas></canvas></div>
         <div class="page-bar">
@@ -701,6 +701,7 @@ function renderPages() {
             <button data-act="edit" title="עריכת העמוד">✏️</button>
             ${i > 1 ? '<button data-act="up" title="הזזה אחורה">⬅</button>' : ''}
             ${i > 0 && i < pages.length - 1 ? '<button data-act="down" title="הזזה קדימה">➡</button>' : ''}
+            ${i < pages.length - 1 ? '<button data-act="add" title="הוספת עמוד אחרי העמוד הזה">➕</button>' : ''}
             ${i > 0 ? '<button data-act="del" title="מחיקת העמוד">🗑</button>' : ''}
           </div>
         </div>`;
@@ -711,6 +712,16 @@ function renderPages() {
       io.observe(el);
     }
     host.appendChild(s);
+    // "+" between spreads: inserts a page right here (never after the closing page)
+    const after = sp[sp.length - 1];
+    if (after < pages.length - 1) {
+      const add = document.createElement('button');
+      add.className = 'add-between';
+      add.innerHTML = '<span>＋</span> הוספת עמוד כאן';
+      add.title = `הוספת עמוד בין עמוד ${after} לעמוד ${after + 1}`;
+      add.onclick = () => addPageAt(after + 1);
+      host.appendChild(add);
+    }
   });
 
   const interior = pages.length - 1;
@@ -754,6 +765,7 @@ async function pageAction(i, act) {
     return;
   }
   if (act === 'edit') { openEditor(i); return; }
+  if (act === 'add') { addPageAt(i + 1); return; }
   if (act === 'shuffle') {
     const ids = [...pg.photos];
     for (let k = ids.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [ids[k], ids[j]] = [ids[j], ids[k]]; }
@@ -1046,6 +1058,45 @@ function relayoutPage(pg) {
   pg.photos = choice.photos;
   delete pg.shapes;
   pg.variant = Math.random();
+}
+
+// insert a new page at position `at` (asks what kind of page)
+async function addPageAt(at) {
+  const a = state.album;
+  if (!a.pages) return;
+  at = Math.max(1, Math.min(at, a.pages.length - 1)); // between the cover and the closing page
+  const body = await modal('הוספת עמוד', `
+    <p class="small" style="text-align:right">העמוד החדש ייכנס במקום ${at} (בין עמוד ${at - 1 || 'הכריכה'} לעמוד ${at}).</p>
+    <div class="add-kinds">
+      <label><input type="radio" name="kind" value="photos" checked><b>🖼️ עמוד תמונות</b><small>בוחרים תמונה, ואפשר להוסיף עוד בעריכה</small></label>
+      <label><input type="radio" name="kind" value="chapter"><b>📖 פתיחת פרק</b><small>תמונה ראשית עם כותרת גדולה</small></label>
+      <label><input type="radio" name="kind" value="text"><b>✍️ עמוד טקסט</b><small>כותרת וטקסט, בלי תמונות</small></label>
+    </div>`, 'המשך');
+  if (!body) return;
+  const kind = body.querySelector('input[name=kind]:checked').value;
+  const before = structuredClone(a.pages);
+  let page;
+  if (kind === 'text') {
+    page = { id: db.uid(), type: 'end', textPage: true, photos: [], title: 'כותרת', subtitle: '', variant: Math.random() };
+  } else {
+    ed.index = -1; // the picker is not tied to an open editor here
+    const id = await pickPhoto();
+    if (!id) return;
+    const ph = photosById().get(id);
+    if (kind === 'chapter') {
+      page = { id: db.uid(), type: 'chapter', photos: [id], title: ph ? chapterDateFmt.format(new Date(ph.date)) : '', subtitle: '', variant: Math.random() };
+    } else {
+      page = { id: db.uid(), type: 'photos', photos: [id], variant: Math.random() };
+      relayoutPage(page);
+    }
+  }
+  a.pages.splice(at, 0, page);
+  await db.saveAlbum(a);
+  renderPages();
+  let msg = 'העמוד נוסף – אפשר להמשיך לערוך אותו';
+  if ((a.pages.length - 1) % 2) msg += ' · שימו לב: מספר עמודים אי-זוגי';
+  await openEditor(at);
+  toast(msg, 6000, { label: 'ביטול', run: async () => { a.pages = before; await db.saveAlbum(a); closeEditor(); renderPages(); } });
 }
 
 // switch a page between "regular photo page" and "chapter opening"
@@ -1438,7 +1489,7 @@ async function openEditor(i) {
   ed.sel = ed.page.photos.length === 1 ? 0 : null;
   ed.selText = null;
   ed.swap = false;
-  const label = i === 0 ? 'כריכה' : ({ chapter: 'פתיחת פרק', end: 'עמוד סיום' }[ed.page.type] || 'עמוד');
+  const label = i === 0 ? 'כריכה' : ed.page.textPage ? 'עמוד טקסט' : ({ chapter: 'פתיחת פרק', end: 'עמוד סיום' }[ed.page.type] || 'עמוד');
   $('#edTitle').textContent = `${label} · ${i === 0 ? '' : i + ' מתוך ' + (a.pages.length - 1)}`.replace(/ · $/, '');
   $('#edPrev').disabled = i === 0;
   $('#edNext').disabled = i >= a.pages.length - 1;
