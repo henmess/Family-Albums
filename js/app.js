@@ -1,8 +1,8 @@
-import * as db from './db.js?v=43';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=43';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=43';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=43';
-import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=43';
+import * as db from './db.js?v=44';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=44';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=44';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=44';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=44';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -604,6 +604,8 @@ async function openDesign() {
   $('#titleInput').value = a.title || '';
   $('#subtitleInput').value = a.subtitle || '';
   $('#subtitle2Input').value = a.subtitle2 || '';
+  $('#capScale').value = a.captionScale || 1;
+  $('#capScaleLbl').textContent = Math.round((a.captionScale || 1) * 100) + '%';
   $('#formatSelect').innerHTML = Object.entries(FORMATS).map(([k, f]) => `<option value="${k}" ${k === a.format ? 'selected' : ''}>${f.name}</option>`).join('');
   $$('#densitySeg button').forEach(b => b.classList.toggle('active', b.dataset.v === a.density));
   $$('#dpiSeg button').forEach(b => b.classList.toggle('active', +b.dataset.v === state.dpi));
@@ -687,6 +689,12 @@ $('#titleInput').oninput = debounce(async () => { state.album.title = $('#titleI
 $('#subtitleInput').oninput = debounce(async () => { state.album.subtitle = $('#subtitleInput').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
 $('#subtitle2Input').oninput = debounce(async () => { state.album.subtitle2 = $('#subtitle2Input').value; await db.saveAlbum(state.album); rerenderPagesOfType('cover'); }, 350);
 // size change keeps the design: layouts are relative, so pages adapt to the new size
+$('#capScale').oninput = () => { $('#capScaleLbl').textContent = Math.round($('#capScale').value * 100) + '%'; };
+$('#capScale').onchange = async () => {
+  state.album.captionScale = +$('#capScale').value;
+  await db.saveAlbum(state.album);
+  renderPages();
+};
 $('#formatSelect').onchange = async e => {
   state.album.format = e.target.value;
   await db.saveAlbum(state.album);

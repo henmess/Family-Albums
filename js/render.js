@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=43';
+import { templateById, rng } from './layout.js?v=44';
 
 /*
  Theme fields
@@ -776,7 +776,7 @@ export async function renderPage(canvas, page, env) {
   const M = theme.margin * k;
   const fam = theme.font;
   const texts = [];
-  const g = { W, H, B, PW, PH, M, k, r, colors, page, texts, pageNumber: env.pageNumber };
+  const g = { W, H, B, PW, PH, M, k, r, colors, page, texts, pageNumber: env.pageNumber, capScale: env.album?.captionScale || 1 };
   const slots = [];
 
   if (page.type === 'raster') {
@@ -879,6 +879,8 @@ export async function renderPage(canvas, page, env) {
 
 // bottom caption: plain text, or a row of bullet points ("a, b, c" -> • a  • b  • c)
 function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
+  // album-wide size control for bottom captions / bullets
+  opt = { ...opt, size: opt.size * (g.capScale || 1) };
   if (!page.captionBullets) { drawText(ctx, page.caption, g.B + g.PW / 2, cy, opt); return; }
   const items = page.caption.split(/[,،\n•·|]+/).map(t => t.trim()).filter(Boolean);
   if (!items.length) return;
@@ -889,7 +891,7 @@ function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
   const avail = titlePage ? g.PH * 0.16 : g.M * 0.85;
   // bullets read better a bit larger than a plain caption (still kept inside the margin)
   // title pages: a fixed, generous size relative to the page (≈11 mm on a 20 cm page)
-  let size = titlePage ? g.PH * (theme.bgStyle === 'navygold' ? 0.045 : 0.055)
+  let size = titlePage ? g.PH * (theme.bgStyle === 'navygold' ? 0.036 : 0.042) * (g.capScale || 1)
     : overPhoto ? opt.size * 1.35
     : Math.min(opt.size * 1.35, g.M * 0.62), widths, rows, dot, dotGap, itemGap;
   for (let tries = 0; tries < 8; tries++) {
