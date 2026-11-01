@@ -1,8 +1,8 @@
 // Rebuilds an editable design from a PDF page image that this site produced
 // earlier: finds the layout + which album photos sit where, and (optionally)
 // reads the titles/captions with Hebrew OCR.
-import { TEMPLATES, templateById } from './layout.js?v=36';
-import { THEMES } from './render.js?v=36';
+import { TEMPLATES, templateById } from './layout.js?v=38';
+import { THEMES } from './render.js?v=38';
 
 const S = 16; // fingerprint grid
 
@@ -281,12 +281,15 @@ function asBullets(t) {
 /** read the page's text lines: [{text, y (0..1 center), h (0..1 height), x0, x1}] */
 export async function readText(bitmap, { photoBg = false } = {}) {
   const worker = await getOcr();
-  const pass = async (W0, keep, invert = false) => {
+  // crop: read only a horizontal strip of the page (y0..y1 as page fractions)
+  const pass = async (W0, keep, invert = false, crop = null) => {
     const W = Math.min(W0, bitmap.width);
-    const H = Math.round(W * bitmap.height / bitmap.width);
+    const FH = Math.round(W * bitmap.height / bitmap.width);
+    const cy0 = crop ? Math.round(FH * crop[0]) : 0;
+    const H = crop ? Math.round(FH * (crop[1] - crop[0])) : FH;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const cx = c.getContext('2d', { willReadFrequently: true });
-    cx.drawImage(bitmap, 0, 0, W, H);
+    cx.drawImage(bitmap, 0, -cy0, W, FH);
     // light pages: darken colored/soft lettering (gold, grey) so OCR sees it
     const img = cx.getImageData(0, 0, W, H), d = img.data;
     let lum = 0;
@@ -321,7 +324,7 @@ export async function readText(bitmap, { photoBg = false } = {}) {
     for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) {
       const text = cleanLine(l.text || '');
       if (!text) continue;
-      const yc = (l.bbox.y0 + l.bbox.y1) / 2 / H;
+      const yc = (cy0 + (l.bbox.y0 + l.bbox.y1) / 2) / FH;
       // captions/labels sit in the margins and are read with less confidence (bullet dots confuse OCR)
       const margin = yc > 0.85 || yc < 0.12;
       if (l.confidence < (margin ? 20 : 72)) continue;
@@ -329,7 +332,7 @@ export async function readText(bitmap, { photoBg = false } = {}) {
       const good = (chars.match(/[\u05D0-\u05EA0-9]/g) || []).length;
       const okPunct = (chars.match(/[,.'"״׳\-–—:!?()•·+*°]/g) || []).length;
       if (good < 2 || (good + okPunct) / chars.length < (margin ? 0.75 : 0.85)) continue; // noise read from inside photos
-      const toks = text.split(/\s+/).filter(Boolean);
+      const toks = text.split(/\s+/).filter(t => /[\u05D0-\u05EA0-9]/.test(t)); // bullet marks like '+' or '=' are not words
       const longToks = toks.filter(t => t.replace(/[^\u05D0-\u05EA0-9]/g, '').length >= 2).length;
       if (toks.length >= 3 && longToks / toks.length < 0.6) continue; // scattered letters = misread decoration/handwriting
       // big gaps between words = separate bullet items
@@ -345,7 +348,7 @@ export async function readText(bitmap, { photoBg = false } = {}) {
         }
         if (groups.length >= 2) items = groups.map(g => g.map(w => cleanLine(w.text)).join(' ').replace(/^[•·°●+*.oe]\s*/, '').trim()).filter(Boolean);
       }
-      const line = { text, items, y: yc, h: (l.bbox.y1 - l.bbox.y0) / H, x0: l.bbox.x0 / W, x1: l.bbox.x1 / W, conf: l.confidence };
+      const line = { text, items, y: yc, h: (l.bbox.y1 - l.bbox.y0) / FH, x0: l.bbox.x0 / W, x1: l.bbox.x1 / W, conf: l.confidence };
       if (keep(line)) out.push(line);
     }
     return out;
@@ -357,6 +360,14 @@ export async function readText(bitmap, { photoBg = false } = {}) {
     big.push(...await pass(640, l => l.h >= 0.025, true));
     small.push(...await pass(1200, l => l.h < 0.05, true));
   }
+  // captions and labels live in the page margins: read those strips on their own (much more reliable)
+  const strips = [];
+  for (const W0 of [1600, 1200]) {
+    strips.push(...await pass(W0, () => true, false, [0.86, 1]));
+    if (photoBg) strips.push(...await pass(W0, () => true, true, [0.86, 1]));
+  }
+  strips.push(...await pass(1600, () => true, false, [0, 0.13]));
+  small.push(...strips);
   // prefer the big-pass reading where both passes saw the same line
   // where both passes saw the same line, keep the more confident reading
   const all = [...big, ...small].sort((a, b) => b.conf - a.conf);
@@ -380,9 +391,12 @@ export function assignText(page, lines, { theme, format, bleed, boxes = [], isCo
     ls.sort((a, b) => a.y - b.y);
     const txt = ls.map(l => l.text).join(' ');
     if (page.type === 'photos' && MONTHS.test(txt) && /\d{4}/.test(txt) && txt.length < 30) { out.showDate = true; return; }
-    const fromGaps = ls.flatMap(l => l.items || []);
+    const heb = t2 => (t2.match(/[\u05D0-\u05EA]/g) || []).length;
+    if (heb(txt) < 2) return; // numbers / dots only: page number or noise
+    const fromGaps = ls.flatMap(l => l.items || []).filter(it => heb(it) >= 2); // drop page numbers mixed in
     const b = fromGaps.length >= 2 && ls.every(l => l.items) ? fromGaps : asBullets(txt);
-    if (b) { out.caption = b.join(', '); out.captionBullets = true; } else out.caption = txt;
+    const items2 = b ? b.filter(it => heb(it) >= 2) : null;
+    if (items2 && items2.length >= 2) { out.caption = items2.join(', '); out.captionBullets = true; } else out.caption = txt.replace(/^\d{1,3}\s+|\s+\d{1,3}$/g, '');
   };
   if (page.type === 'photos') {
     setCaption(bottom);

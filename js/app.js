@@ -1,8 +1,8 @@
-import * as db from './db.js?v=36';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=36';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=36';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=36';
-import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=36';
+import * as db from './db.js?v=38';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=38';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=38';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=38';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=38';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1930,6 +1930,84 @@ function encodeDesign(a) {
 }
 
 // pull the JPEG page images out of a PDF made by this site (one image per page, in order)
+// read the page images in real page order: page tree -> page -> content stream -> "/Ix Do" -> image object.
+// (a PDF stores an image once even when two pages are identical, and apps may reorder objects)
+async function pdfPageImages(bytes, text) {
+  const objPos = new Map();
+  const re = /(\d+)\s+0\s+obj\b/g;
+  let m;
+  while ((m = re.exec(text))) objPos.set(+m[1], m.index);
+  const objText = id => {
+    const at = objPos.get(id);
+    if (at == null) return null;
+    const end = text.indexOf('endobj', at);
+    return text.slice(at, end < 0 ? undefined : end);
+  };
+  const streamBytes = id => {
+    const at = objPos.get(id);
+    const o = objText(id);
+    if (!o) return null;
+    const sm = /stream\r?\n/.exec(o);
+    if (!sm) return null;
+    const start = at + sm.index + sm[0].length;
+    let e = text.indexOf('endstream', start);
+    while (e > start && (bytes[e - 1] === 0x0a || bytes[e - 1] === 0x0d)) e--;
+    return { dict: o.slice(0, sm.index), data: bytes.slice(start, e) };
+  };
+  const inflate = async data => {
+    const ds = new DecompressionStream('deflate');
+    const buf = await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer();
+    return new TextDecoder('latin1').decode(buf);
+  };
+  const dictRef = (src, key) => { const mm = new RegExp('/' + key + '\\s+(\\d+)\\s+0\\s+R').exec(src); return mm ? +mm[1] : null; };
+  // page tree root: the /Pages node that has no /Parent
+  let root = null;
+  for (const id of objPos.keys()) {
+    const o = objText(id);
+    if (o && /\/Type\s*\/Pages\b/.test(o) && !/\/Parent\s/.test(o)) { root = id; break; }
+  }
+  if (root == null) return null;
+  const pages = [];
+  const walk = (id, depth = 0) => {
+    if (depth > 20) return;
+    const o = objText(id) || '';
+    if (/\/Type\s*\/Pages\b/.test(o)) {
+      const kids = /\/Kids\s*\[([^\]]*)\]/.exec(o);
+      for (const km of (kids ? kids[1] : '').matchAll(/(\d+)\s+0\s+R/g)) walk(+km[1], depth + 1);
+    } else if (/\/Type\s*\/Page\b/.test(o)) pages.push(id);
+  };
+  walk(root);
+  const out = [];
+  for (const pid of pages) {
+    const po = objText(pid);
+    // resources may be inline or a reference
+    const resId = dictRef(po, 'Resources');
+    const res = resId != null ? objText(resId) : po;
+    const xo = /\/XObject\s*(<<[\s\S]*?>>|(\d+)\s+0\s+R)/.exec(res || '');
+    let xdict = xo ? (xo[2] ? objText(+xo[2]) : xo[1]) : '';
+    // content stream(s)
+    const cm = /\/Contents\s*(\[[^\]]*\]|(\d+)\s+0\s+R)/.exec(po);
+    const ids = !cm ? [] : cm[2] ? [+cm[2]] : [...cm[1].matchAll(/(\d+)\s+0\s+R/g)].map(x => +x[1]);
+    let content = '';
+    for (const cid of ids) {
+      const st = streamBytes(cid);
+      if (!st) continue;
+      content += /FlateDecode/.test(st.dict) ? await inflate(st.data) : new TextDecoder('latin1').decode(st.data);
+    }
+    const names = [...content.matchAll(/\/([^\s/<>\[\]()]+)\s+Do\b/g)].map(x => x[1]);
+    let img = null;
+    for (const nm of names) {
+      const ref = new RegExp('/' + nm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+(\\d+)\\s+0\\s+R').exec(xdict || '');
+      if (!ref) continue;
+      const st = streamBytes(+ref[1]);
+      if (st && /DCTDecode/.test(st.dict) && st.data[0] === 0xff && st.data[1] === 0xd8) { img = new Blob([st.data], { type: 'image/jpeg' }); break; }
+    }
+    if (!img) return null; // not a page made of one JPEG – use the simple reader
+    out.push(img);
+  }
+  return out.length ? out : null;
+}
+
 function extractPdfJpegs(bytes, text) {
   const out = [];
   const re = /\/DCTDecode[\s\S]{0,400}?stream\r?\n/g;
@@ -1983,7 +2061,9 @@ async function loadDesignFromPdf(file) {
     }
   }
   // older PDF (or from another browser): rebuild an editable design, or keep pages as exact images
-  const jpegs = extractPdfJpegs(bytes, text);
+  let jpegs = null;
+  try { jpegs = await pdfPageImages(bytes, text); } catch (e) { console.warn('page tree read failed', e); }
+  if (!jpegs) jpegs = extractPdfJpegs(bytes, text);
   if (!jpegs.length) { toast('לא הצלחתי לקרוא את הקובץ. צריך PDF שנוצר באתר הזה.', 7000); return; }
   const canRebuild = !design && state.photos.some(p => !p.raster);
   const choice = await modal('שחזור מה-PDF', `<p>בקובץ יש <b>${jpegs.length} עמודים</b>.</p>
@@ -2054,6 +2134,14 @@ async function loadDesignFromPdf(file) {
             const lines = await readText(bmp, { photoBg: overPhoto });
             const boxes = page.type === 'photos' ? boxesFor(page.template, res.theme, fmt, bleed) : page.type === 'end' ? [] : boxesFor(null, res.theme, fmt, bleed);
             const f = assignText(page, lines, { theme: res.theme, format: fmt, bleed, boxes, isCover: page.type === 'cover' });
+            // years misread by one digit (2075 for 2025) -> the nearest year of the album's photos
+            const years = [...new Set(state.photos.filter(p => !p.raster).map(p => new Date(p.date).getFullYear()))];
+            const fixYears = t2 => t2 && t2.replace(/\b(19|20)\d\d\b|\b\d{4}\b/g, y => {
+              if (years.includes(+y)) return y;
+              const near = years.find(Y => [...String(Y)].filter((ch, i2) => ch !== y[i2]).length === 1);
+              return near ? String(near) : y;
+            });
+            for (const kk of ['title', 'subtitle', 'subtitle2', 'caption']) if (f[kk]) f[kk] = fixYears(f[kk]);
             // a full-page photo with a big title over it was a chapter opening
             if (page.type === 'photos' && page.template === 'solo-full' && f.title && THEMES[res.theme]?.fullBleedSolo) { page.type = 'chapter'; delete page.template; }
             // chapter titles are usually the photo's date: fix small OCR slips (e.g. "2" for "12")
