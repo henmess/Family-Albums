@@ -414,3 +414,5 @@ body.dragging-photo .page .canvas-wrap::after { display: none; }
 textarea.input.grow { resize: none; overflow: hidden; line-height: 1.45; min-height: 42px; display: block; font: inherit; }
 
 .pdf-import { display: block; text-align: center; margin-top: 8px; cursor: pointer; border-color: var(--line); }
+
+.add-between.first { margin: 0 auto -18px; }

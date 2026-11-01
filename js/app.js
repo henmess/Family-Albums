@@ -1,7 +1,8 @@
-import * as db from './db.js?v=33';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=33';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=33';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=33';
+import * as db from './db.js?v=35';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=35';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=35';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=35';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=35';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -750,6 +751,11 @@ function renderPages() {
     }
   }, { rootMargin: '400px' });
 
+  const addFirst = document.createElement('button');
+  addFirst.className = 'add-between first';
+  addFirst.innerHTML = '<span>＋</span> הוספת עמוד ראשי בתחילת האלבום';
+  addFirst.onclick = () => addPageAt(0);
+  host.appendChild(addFirst);
   spreads.forEach(sp => {
     const s = document.createElement('div');
     s.className = 'spread' + (sp.length === 1 ? ' single' : '');
@@ -1133,16 +1139,18 @@ function relayoutPage(pg) {
 async function addPageAt(at) {
   const a = state.album;
   if (!a.pages) return;
-  at = Math.max(1, Math.min(at, a.pages.length - 1)); // between the cover and the closing page
+  at = Math.max(0, Math.min(at, a.pages.length - 1)); // never after the closing page
   const body = await modal('הוספת עמוד', `
-    <p class="small" style="text-align:right">העמוד החדש ייכנס במקום ${at} (בין עמוד ${at - 1 || 'הכריכה'} לעמוד ${at}).</p>
+    <p class="small" style="text-align:right">${at === 0 ? 'העמוד החדש ייכנס בתחילת האלבום.' : `העמוד החדש ייכנס במקום ${at} (בין עמוד ${at - 1 || 'הכריכה'} לעמוד ${at}).`}</p>
     <div class="add-kinds">
-      <label><input type="radio" name="kind" value="photos" checked><b>🖼️ עמוד תמונות</b><small>בוחרים תמונה, ואפשר להוסיף עוד בעריכה</small></label>
+      <label><input type="radio" name="kind" value="cover" ${at === 0 ? 'checked' : ''}><b>📕 עמוד ראשי (כריכה)</b><small>עמוד ראשון חדש לאלבום: תמונה עם שם האלבום. העמוד הראשון הנוכחי יהפוך לעמוד 1</small></label>
+      <label><input type="radio" name="kind" value="photos" ${at === 0 ? '' : 'checked'}><b>🖼️ עמוד תמונות</b><small>בוחרים תמונה, ואפשר להוסיף עוד בעריכה</small></label>
       <label><input type="radio" name="kind" value="chapter"><b>📖 פתיחת פרק</b><small>תמונה ראשית עם כותרת גדולה</small></label>
       <label><input type="radio" name="kind" value="text"><b>✍️ עמוד טקסט</b><small>כותרת וטקסט, בלי תמונות</small></label>
     </div>`, 'המשך');
   if (!body) return;
   const kind = body.querySelector('input[name=kind]:checked').value;
+  if (at === 0 && kind !== 'cover') at = 1; // only a cover can come before the current first page
   const before = structuredClone(a.pages);
   let page;
   if (kind === 'text') {
@@ -1152,7 +1160,13 @@ async function addPageAt(at) {
     const id = await pickPhoto();
     if (!id) return;
     const ph = photosById().get(id);
-    if (kind === 'chapter') {
+    if (kind === 'cover') {
+      page = { id: db.uid(), type: 'cover', photos: [id], variant: Math.random() };
+      at = 0;
+      // the old first page stays in the album as a regular opening page
+      const old = a.pages[0];
+      if (old?.type === 'cover') a.pages[0] = { ...old, type: 'chapter', title: old.title || a.title || a.name || '', subtitle: old.subtitle || a.subtitle || '' };
+    } else if (kind === 'chapter') {
       page = { id: db.uid(), type: 'chapter', photos: [id], title: ph ? chapterDateFmt.format(new Date(ph.date)) : '', subtitle: '', variant: Math.random() };
     } else {
       page = { id: db.uid(), type: 'photos', photos: [id], variant: Math.random() };
@@ -1936,19 +1950,35 @@ async function loadDesignFromPdf(file) {
       return;
     }
   }
-  // older PDF (or from another browser): restore every page as an exact image
+  // older PDF (or from another browser): rebuild an editable design, or keep pages as exact images
   const jpegs = extractPdfJpegs(bytes, text);
   if (!jpegs.length) { toast('לא הצלחתי לקרוא את הקובץ. צריך PDF שנוצר באתר הזה.', 7000); return; }
-  const ok = await modal('שחזור מה-PDF', `<p>בקובץ יש <b>${jpegs.length} עמודים</b>.</p>
-    <p>${design ? 'התמונות של העיצוב הזה לא נמצאות באלבום הזה,' : 'הקובץ נוצר לפני שהייתה אפשרות שחזור,'} לכן כל עמוד ייטען <b>כתמונה בדיוק כמו ב-PDF</b> – ייראה ויודפס אותו דבר, אבל לא יהיה אפשר לערוך פרטים בתוך העמודים.</p>
+  const canRebuild = !design && state.photos.some(p => !p.raster);
+  const choice = await modal('שחזור מה-PDF', `<p>בקובץ יש <b>${jpegs.length} עמודים</b>.</p>
+    ${canRebuild ? `<div class="add-kinds">
+      <label><input type="radio" name="mode" value="edit" checked><b>✏️ שחזור לעריכה</b><small>האתר מזהה אילו תמונות מהאלבום נמצאות בכל עמוד ובאיזו פריסה, וקורא את הכותרות והכיתובים – ואז אפשר לערוך הכל כרגיל. עמוד שלא יזוהה בביטחון יישאר כתמונה מדויקת.</small></label>
+      <label><input type="radio" name="mode" value="exact"><b>🖼️ תמונות מדויקות</b><small>כל עמוד נטען כתמונה בדיוק כמו ב-PDF, בלי אפשרות לערוך פרטים בתוכו.</small></label>
+    </div>
+    <label class="check"><input type="checkbox" id="ocrChk" checked> לקרוא גם את הכותרות והכיתובים (זיהוי טקסט – לוקח כמה שניות לכל עמוד)</label>`
+    : `<p>${design ? 'התמונות של העיצוב הזה לא נמצאות באלבום הזה,' : 'אין באלבום תמונות להשוואה,'} לכן כל עמוד ייטען <b>כתמונה בדיוק כמו ב-PDF</b>.</p>`}
     <p class="small" style="text-align:right">העיצוב הנוכחי נשמר, ואפשר לחזור אליו בכפתור "↺ שחזור העיצוב הקודם".</p>`, 'לשחזר');
-  if (!ok) return;
+  if (!choice) return;
+  const mode = canRebuild ? choice.querySelector('input[name=mode]:checked').value : 'exact';
+  const useOcr = mode === 'edit' && choice.querySelector('#ocrChk')?.checked;
   const prog = toastProgress('משחזר עמודים…');
-  const pages = [];
-  for (let i = 0; i < jpegs.length; i++) {
-    prog(`משחזר עמוד ${i + 1} מתוך ${jpegs.length}…`);
-    const blob = jpegs[i];
-    const bmp = await createImageBitmap(blob);
+  // match the album size to the PDF page size (with or without 3 mm bleed)
+  const sz = pdfPageSizeMm(text);
+  let format = a.format, bleed = 0;
+  if (sz) {
+    let best = null;
+    for (const [key, f] of Object.entries(FORMATS)) for (const bl of [0, 3]) {
+      const d = Math.abs(f.w + 2 * bl - sz.w) + Math.abs(f.h + 2 * bl - sz.h);
+      if (!best || d < best.d) best = { key, bl, d };
+    }
+    if (best && best.d < 8) { format = best.key; bleed = best.bl; }
+  }
+  const fmt = FORMATS[format] || FORMATS.sq20;
+  const makeRaster = async (blob, i, bmp) => {
     const sc = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas');
     c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc);
@@ -1959,28 +1989,106 @@ async function loadDesignFromPdf(file) {
       thumb, width: bmp.width, height: bmp.height, date: Date.now(), hash: [0, 0], focal: { x: 0.5, y: 0.5 }, color: [220, 220, 220],
       quality: { sharp: 1, exposure: 1, contrast: 1, colorful: 1, resolution: 1, score: 1 },
     };
-    bmp.close?.();
     await db.savePhoto(photo, blob);
     state.photos.push(photo);
-    pages.push({ id: db.uid(), type: 'raster', photos: [photo.id], variant: Math.random() });
-  }
-  pushHistory(a, 'לפני שחזור מ-PDF');
-  // match the album size to the PDF page size (with or without 3 mm bleed)
-  const sz = pdfPageSizeMm(text);
-  if (sz) {
-    let best = null;
-    for (const [key, f] of Object.entries(FORMATS)) for (const bl of [0, 3]) {
-      const d = Math.abs(f.w + 2 * bl - sz.w) + Math.abs(f.h + 2 * bl - sz.h);
-      if (!best || d < best.d) best = { key, bl, d };
+    return { id: db.uid(), type: 'raster', photos: [photo.id], variant: Math.random() };
+  };
+  const pages = [];
+  const themeVotes = {};
+  const albumText = {};
+  let rebuilt = 0;
+  const prepared = mode === 'edit' ? await preparePhotos(state.photos.filter(p => !p.raster && p.thumb instanceof Blob)) : [];
+  const usedPhotos = new Set();
+  for (let i = 0; i < jpegs.length; i++) {
+    prog(`${mode === 'edit' ? 'מזהה' : 'משחזר'} עמוד ${i + 1} מתוך ${jpegs.length}…`);
+    const blob = jpegs[i];
+    const bmp = await createImageBitmap(blob);
+    let page = null;
+    if (mode === 'edit') {
+      const res = await analyzePage(bmp, { format: fmt, bleed, prepared, preferredTheme: a.theme });
+      const last = i === jpegs.length - 1;
+      const sure = (res.mean ?? 0) >= 0.5;
+      if (res.kind === 'empty') page = { id: db.uid(), type: 'end', photos: [], variant: Math.random(), ...(last ? {} : { textPage: true }) };
+      else if (sure && i === 0) page = { id: db.uid(), type: 'cover', photos: [res.photos[0]], variant: Math.random() };
+      else if (sure && res.kind === 'hero') page = { id: db.uid(), type: 'chapter', photos: res.photos, variant: Math.random() };
+      else if (sure) page = { id: db.uid(), type: 'photos', template: res.template, photos: res.photos, variant: Math.random() };
+      if (page) {
+        page._theme = res.theme;
+        themeVotes[res.theme] = (themeVotes[res.theme] || 0) + 1;
+        if (useOcr) {
+          try {
+            prog(`קורא טקסט בעמוד ${i + 1} מתוך ${jpegs.length}…`);
+            const overPhoto = res.kind === 'full' || (page.type === 'cover' && THEMES[res.theme]?.cover !== 'framed') || (page.type === 'chapter' && THEMES[res.theme]?.fullBleedSolo);
+            const lines = await readText(bmp, { photoBg: overPhoto });
+            const boxes = page.type === 'photos' ? boxesFor(page.template, res.theme, fmt, bleed) : page.type === 'end' ? [] : boxesFor(null, res.theme, fmt, bleed);
+            const f = assignText(page, lines, { theme: res.theme, format: fmt, bleed, boxes, isCover: page.type === 'cover' });
+            // a full-page photo with a big title over it was a chapter opening
+            if (page.type === 'photos' && page.template === 'solo-full' && f.title && THEMES[res.theme]?.fullBleedSolo) { page.type = 'chapter'; delete page.template; }
+            // chapter titles are usually the photo's date: fix small OCR slips (e.g. "2" for "12")
+            if (page.type === 'chapter' && f.title) {
+              const ph0 = state.photos.find(p => p.id === page.photos[0]);
+              if (ph0) {
+                const d0 = new Date(ph0.date);
+                const day = chapterDateFmt.format(d0), month = new Intl.DateTimeFormat('he-IL', { month: 'long', year: 'numeric' }).format(d0);
+                const m = f.title.match(MONTHS);
+                const sameMonth = m && day.includes(m[1]);
+                if (sameMonth) f.title = (f.title.match(/\d+/g) || []).length >= 2 || /^\S*\d/.test(f.title) ? day : month;
+                else if (editDistance(day, f.title) <= 3) f.title = day;
+              }
+            }
+            if (page.type === 'cover') {
+              if (f.title) albumText.title = f.title;
+              if (f.subtitle) albumText.subtitle = f.subtitle;
+              if (f.subtitle2) albumText.subtitle2 = f.subtitle2;
+              for (const kk of ['caption', 'captionBullets']) if (f[kk] != null) page[kk] = f[kk];
+            } else Object.assign(page, f);
+          } catch (e) { console.warn('OCR failed', e); }
+        }
+        // an opening page without a readable title gets its photo's date (how openings are titled)
+        if (page.type === 'chapter' && !page.title) {
+          const ph0 = state.photos.find(p => p.id === page.photos[0]);
+          if (ph0) page.title = chapterDateFmt.format(new Date(ph0.date));
+        }
+        page.photos.forEach(id => usedPhotos.add(id));
+        rebuilt++;
+      }
     }
-    if (best && best.d < 8) { a.format = best.key; a.bleed = best.bl; }
+    if (!page) page = await makeRaster(blob, i, bmp);
+    bmp.close?.();
+    pages.push(page);
   }
+  if (useOcr) closeOcr().catch(() => {});
+  pushHistory(a, 'לפני שחזור מ-PDF');
+  a.format = format; a.bleed = bleed;
+  // the most common style becomes the album style; other pages keep theirs
+  const top = Object.entries(themeVotes).sort((x, y) => y[1] - x[1])[0]?.[0];
+  if (top) a.theme = top;
+  for (const pg of pages) {
+    if (pg._theme && pg._theme !== a.theme) pg.style = pg._theme;
+    delete pg._theme;
+  }
+  Object.assign(a, albumText);
+  // photos that were in the PDF count as chosen for the album
+  const touched = state.photos.filter(p => usedPhotos.has(p.id) && !isIncluded(p));
+  touched.forEach(p => { p.manual = 'in'; });
+  if (touched.length) await db.updatePhotos(touched);
   a.pages = pages;
   a.needsRedesign = false;
   await db.saveAlbum(a);
   prog(null);
   await openDesign();
-  toast(`שוחזרו ${pages.length} עמודים בדיוק כמו ב-PDF 🎉`, 6000);
+  const kept = pages.length - rebuilt;
+  toast(mode === 'edit'
+    ? `שוחזרו ${rebuilt} עמודים לעריכה${kept ? ` · ${kept} נשארו כתמונה מדויקת` : ''} 🎉 כדאי לעבור על הטקסטים`
+    : `שוחזרו ${pages.length} עמודים בדיוק כמו ב-PDF 🎉`, 9000);
+}
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) {
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  }
+  return d[a.length][b.length];
 }
 function toastProgress(msg) {
   const t = $('#toast');
