@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=30';
+import { templateById, rng } from './layout.js?v=31';
 
 /*
  Theme fields
@@ -868,10 +868,13 @@ function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
   if (!items.length) return;
   const { k } = g;
   const overPhoto = !!opt.shadow;
+  const titlePage = page.type !== 'photos'; // cover / chapter / closing pages have room for bigger bullets
   // keep a multi-line list inside the bottom margin by shrinking it if needed
-  const avail = g.M * 0.85;
+  const avail = g.M * (titlePage ? 1.6 : 0.85);
   // bullets read better a bit larger than a plain caption (still kept inside the margin)
-  let size = overPhoto ? opt.size * 1.35 : Math.min(opt.size * 1.35, g.M * 0.62), widths, rows, dot, dotGap, itemGap;
+  let size = overPhoto ? opt.size * (titlePage ? 1.6 : 1.35)
+    : titlePage ? Math.min(opt.size * 1.7, g.M * (theme.bgStyle === 'navygold' ? 0.52 : 0.85)) // stay inside the gold frame
+    : Math.min(opt.size * 1.35, g.M * 0.62), widths, rows, dot, dotGap, itemGap;
   for (let tries = 0; tries < 8; tries++) {
     ctx.save();
     ctx.direction = 'rtl';
@@ -894,7 +897,8 @@ function drawCaption(ctx, page, theme, colors, g, cy, opt, growDown = false) {
   opt = { ...opt, size };
   const lineH = size * 1.45;
   // the last row sits on cy (rows grow upward), or the first row when the caption is at the top
-  const y0 = growDown ? cy : overPhoto ? cy - (rows.length - 1) * lineH : cy - (rows.length - 1) * lineH / 2;
+  // on title pages a second row grows upward, so it never falls off the page
+  const y0 = growDown ? cy : (overPhoto || titlePage) ? cy - (rows.length - 1) * lineH : cy - (rows.length - 1) * lineH / 2;
   rows.forEach(({ row, rw }, ri) => {
     const y = y0 + ri * lineH;
     let x = g.B + g.PW / 2 + rw / 2; // right edge of the row (RTL)
