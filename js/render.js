@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=27';
+import { templateById, rng } from './layout.js?v=28';
 
 /*
  Theme fields
@@ -280,6 +280,7 @@ let textCollector = null;
 
 function textGroup(ctx, g, id, ax, ay, draw) {
   const t = g.page.text?.[id] || {};
+  if (id === 'caption' && t.top) return textGroup(ctx, { ...g, page: { ...g.page, text: { ...g.page.text, caption: { ...t, top: false, dy: 0 } } } }, id, ax, ay, draw);
   const dx = (t.dx || 0) * g.PW, dy = (t.dy || 0) * g.PH, s = t.scale || 1;
   const boxes = [];
   const prev = textCollector;
@@ -821,7 +822,8 @@ export async function renderPage(canvas, page, env) {
     }
     if (page.caption) {
       // on a full-page photo keep the caption away from the subject
-      const top = tpl.full ? placeTop(page, g, 'caption', subjectY(page, g) > 0.62) : false;
+      // the bottom caption always stays at the bottom of the page (also on full-page photos)
+      const top = false;
       const cy = top ? B + Math.max(M * 0.9, 9 * k) : B + PH - Math.max(M * (theme.bgStyle === 'navygold' ? 0.68 : 0.45), tpl.full ? 9 * k : 0);
       textGroup(ctx, g, 'caption', B + PW / 2, cy, () => drawCaption(ctx, page, theme, colors, g, cy, {
         size: Math.max(tpl.full ? 6 * k : 0, Math.min(5.5 * k, M * 0.42)), weight: theme.bodyWeight, family: fam, maxW: PW - 2 * M,
