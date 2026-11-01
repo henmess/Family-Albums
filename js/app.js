@@ -1,7 +1,7 @@
-import * as db from './db.js?v=25';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=25';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=25';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=25';
+import * as db from './db.js?v=27';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=27';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=27';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=27';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1430,9 +1430,14 @@ function edUpdatePanel() {
   const tx = $('#edText');
   const field = (label, value, set, ph = '') => {
     const l = document.createElement('label'); l.className = 'lbl'; l.textContent = label;
-    const i = document.createElement('input'); i.className = 'input'; i.value = value || ''; i.placeholder = ph;
-    i.oninput = debounce(() => { set(i.value); edRender(); }, 250);
+    // a box that grows with the text, so long captions are fully visible while typing
+    const i = document.createElement('textarea'); i.className = 'input grow'; i.rows = 1; i.value = value || ''; i.placeholder = ph;
+    const fit = () => { i.style.height = 'auto'; i.style.height = i.scrollHeight + 2 + 'px'; };
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); }); // one-line text, wrapped only on screen
+    i.addEventListener('input', fit);
+    i.oninput = debounce(() => { set(i.value.replace(/\s*\n\s*/g, ' ')); edRender(); }, 250);
     tx.append(l, i);
+    requestAnimationFrame(fit);
     if (label === 'כיתוב בתחתית העמוד') {
       const b = document.createElement('label');
       b.className = 'check';

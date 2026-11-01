@@ -409,3 +409,6 @@ body.dragging-photo .page .canvas-wrap::after { display: none; }
 .add-kinds label:has(input:checked) { border-color: var(--primary); background: #eef6f4; }
 .add-kinds input { grid-row: span 2; accent-color: var(--primary); }
 .add-kinds small { color: var(--muted); }
+
+/* auto-growing text fields in the page editor */
+textarea.input.grow { resize: none; overflow: hidden; line-height: 1.45; min-height: 42px; display: block; font: inherit; }
