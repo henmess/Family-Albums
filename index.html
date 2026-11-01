@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Bellefair&family=Frank+Ruhl+Libre:wght@400;700&family=Heebo:wght@300;400;700;900&family=Karantina:wght@400;700&family=Rubik:wght@300;400;500;700&family=Secular+One&family=Suez+One&family=Varela+Round&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=41">
+  <link rel="stylesheet" href="css/style.css?v=42">
 </head>
 <body>
   <header class="topbar">
@@ -34,6 +34,7 @@
         <button class="btn ghost" id="backBtn">→ כל האלבומים</button>
         <h1 id="albumName" contenteditable="true" spellcheck="false" title="לחצו כדי לשנות שם"></h1>
         <div class="spacer"></div>
+        <button class="btn ghost" id="dupAlbumBtn">⧉ שכפול אלבום</button>
         <button class="btn ghost danger" id="deleteAlbumBtn">מחיקת אלבום</button>
       </div>
 
@@ -294,7 +295,7 @@
   <button id="toTop" class="to-top" title="חזרה לראש הדף" aria-label="חזרה לראש הדף">↑</button>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script type="module" src="js/app.js?v=41"></script>
+  <script type="module" src="js/app.js?v=42"></script>
   <script>
     // if the app didn't start (e.g. an old cached file after an update), offer a refresh
     setTimeout(function () {

@@ -126,6 +126,12 @@ export async function updatePhotos(photos) {
     tx.onerror = () => rej(tx.error);
   });
 }
+export async function getOriginalRecord(id) {
+  return promisify((await store('originals')).get(id));
+}
+export async function putOriginalRecord(rec) {
+  return promisify((await store('originals', 'readwrite')).put(rec));
+}
 export async function getOriginal(id) {
   const r = await promisify((await store('originals')).get(id));
   return r ? unpackBlob(r.blob) : null;

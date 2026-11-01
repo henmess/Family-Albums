@@ -1,8 +1,8 @@
-import * as db from './db.js?v=41';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=41';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=41';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=41';
-import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=41';
+import * as db from './db.js?v=42';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=42';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=42';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=42';
+import { preparePhotos, analyzePage, readText, assignText, boxesFor, closeOcr, MONTHS } from './reconstruct.js?v=42';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -112,6 +112,7 @@ async function showHome() {
   }
   grid.innerHTML = albums.map(a => `
     <a class="album-card" href="#album/${a.id}">
+      <button class="card-dup" data-dup="${a.id}" title="שכפול האלבום">⧉ שכפול</button>
       <div class="album-cover">${a.coverThumb instanceof Blob ? `<img src="${URL.createObjectURL(a.coverThumb)}" alt="" onerror="this.remove()">` : '<span>📷</span>'}</div>
       <div class="album-info">
         <strong>${esc(a.name)}</strong>
@@ -209,6 +210,60 @@ $('#albumName').addEventListener('blur', async () => {
   await db.saveAlbum(state.album);
 });
 $('#albumName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } });
+
+// ---- duplicate a whole album: photos, pages and every edit, as an independent copy ----
+async function duplicateAlbum(id) {
+  const src = await db.getAlbum(id);
+  if (!src) return;
+  const photos = await db.listPhotos(id);
+  const body = await modal('שכפול אלבום', `
+    <p>ייווצר אלבום חדש שהוא עותק מלא של "<b>${esc(src.name)}</b>" – כל ${photos.filter(p => !p.raster).length} התמונות, כל העמודים והעריכות. שינויים בעותק לא ישפיעו על המקור.</p>
+    <label class="lbl">שם האלבום החדש</label>
+    <input class="input" id="dupName" value="${esc(src.name)} – עותק">
+    <p class="small" style="text-align:right">התמונות מועתקות במלואן, ולכן השכפול תופס עוד מקום בדפדפן ויכול לקחת כמה שניות.</p>`, 'שכפול');
+  if (!body) return;
+  const name = body.querySelector('#dupName').value.trim() || `${src.name} – עותק`;
+  const prog = toastProgress('משכפל…');
+  const newId = db.uid();
+  const idMap = new Map();
+  let n = 0;
+  for (const p of photos) {
+    prog(`משכפל תמונות… ${++n} מתוך ${photos.length}`);
+    const nid = db.uid();
+    idMap.set(p.id, nid);
+    const { legacy, ...rest } = p;
+    await db.savePhoto({ ...rest, id: nid, albumId: newId });
+    const orig = await db.getOriginalRecord(p.id);
+    if (orig) await db.putOriginalRecord({ ...orig, id: nid });
+  }
+  const remapKeys = obj => obj && Object.fromEntries(Object.entries(obj).map(([k, v]) => [idMap.get(k) || k, v]));
+  const remapPage = pg => ({
+    ...structuredClone(pg),
+    id: db.uid(),
+    photos: (pg.photos || []).map(x => idMap.get(x) || x),
+    ...(pg.crops ? { crops: remapKeys(structuredClone(pg.crops)) } : {}),
+    ...(pg.captions ? { captions: remapKeys(structuredClone(pg.captions)) } : {}),
+  });
+  const copy = {
+    ...structuredClone({ ...src, coverThumb: null }),
+    coverThumb: src.coverThumb,
+    id: newId, name, created: Date.now(),
+    pages: src.pages ? src.pages.map(remapPage) : null,
+    history: (src.history || []).map(h => ({ ...h, pages: h.pages.map(remapPage) })),
+  };
+  if (src.title === src.name) copy.title = name;
+  await db.saveAlbum(copy);
+  prog(null);
+  toast(`האלבום שוכפל – אתם עכשיו בעותק "${name}"`, 6000);
+  location.hash = `#album/${newId}/design`;
+}
+$('#dupAlbumBtn').onclick = () => duplicateAlbum(state.album.id);
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-dup]');
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  duplicateAlbum(b.dataset.dup);
+}, true);
 
 $('#deleteAlbumBtn').onclick = async () => {
   const ok = await modal('מחיקת אלבום', `<p>למחוק את "${esc(state.album.name)}" ואת כל התמונות שבו? אי אפשר לבטל.</p>`, 'מחיקה');

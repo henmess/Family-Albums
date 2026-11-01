@@ -416,3 +416,13 @@ textarea.input.grow { resize: none; overflow: hidden; line-height: 1.45; min-hei
 .pdf-import { display: block; text-align: center; margin-top: 8px; cursor: pointer; border-color: var(--line); }
 
 .add-between.first { margin: 0 auto -18px; }
+
+/* duplicate button on album cards */
+.album-card { position: relative; }
+.card-dup {
+  position: absolute; top: 8px; left: 8px; z-index: 2; font: inherit; font-size: .78rem; padding: 4px 10px;
+  border: none; border-radius: 999px; background: rgba(255,255,255,.92); color: var(--text); cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15); opacity: 0; transition: opacity .2s;
+}
+.album-card:hover .card-dup, .card-dup:focus-visible { opacity: 1; }
+@media (hover: none) { .card-dup { opacity: 1; } }
