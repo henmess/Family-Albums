@@ -1,7 +1,7 @@
-import * as db from './db.js?v=28';
-import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=28';
-import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=28';
-import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=28';
+import * as db from './db.js?v=29';
+import { analyzeFile, curate, isIncluded, featuresFromBlob, FEAT_VERSION } from './analyze.js?v=29';
+import { generateAlbum, rerollPage, templateById, TEMPLATES, chooseTemplate, contentAspect, rng } from './layout.js?v=29';
+import { THEMES, renderPage, ensureFonts, effectiveTheme, drawTemplateIcon, BG_SWATCHES } from './render.js?v=29';
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1261,9 +1261,10 @@ function edTextDrag(ev, hit) {
   const W = canvas.width, H = canvas.height;
   const start = { x: ev.clientX, y: ev.clientY, dx: t.dx || 0, dy: t.dy || 0 };
   let raf = 0;
+  const lockY = hit.id === 'caption';
   const move = e => {
     t.dx = start.dx + (e.clientX - start.x) / ed.scale / W;
-    t.dy = start.dy + (e.clientY - start.y) / ed.scale / H;
+    if (!lockY) t.dy = start.dy + (e.clientY - start.y) / ed.scale / H;
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; edRender(); });
   };
   trackDrag(move);
@@ -1355,6 +1356,7 @@ function edUpdatePanel() {
   $('#edSlot').classList.toggle('hidden', !hasSel);
   $('#edTextSel').classList.toggle('hidden', !ed.selText);
   if (ed.selText) {
+    $$('.ed-pos [data-v]').forEach(b => b.classList.toggle('hidden', ed.selText === 'caption'));
     const sc = pg.text?.[ed.selText]?.scale || 1;
     $('#edTextSize').value = sc;
     $('#edTextSizeLbl').textContent = Math.round(sc * 100) + '%';
@@ -1363,6 +1365,7 @@ function edUpdatePanel() {
   $('#edRemove').classList.toggle('hidden', !isPhotos);
   $('#edSwap').textContent = ed.swap ? 'בחרו תמונה להחלפה…' : '↔ החלפת מקום';
   $('#edHint').textContent = ed.swap ? 'לחצו על התמונה שאיתה להחליף מקום'
+    : ed.selText === 'caption' ? 'הכיתוב נשאר תמיד בתחתית העמוד · את הגודל משנים בפאנל'
     : ed.selText ? 'גררו את הטקסט למקום אחר · את הגודל משנים בפאנל'
     : hasSel ? 'גררו את התמונה המסומנת כדי לשנות את החיתוך' : 'לחצו על תמונה או על כותרת כדי לבחור אותה';
   if (hasSel) {

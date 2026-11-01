@@ -1,6 +1,6 @@
 // Draws album pages onto a canvas. The same code is used for the on-screen
 // preview (small thumbnails), the page editor and the print PDF.
-import { templateById, rng } from './layout.js?v=28';
+import { templateById, rng } from './layout.js?v=29';
 
 /*
  Theme fields
@@ -279,8 +279,10 @@ function fitFont(ctx, text, weight, family, size, maxW) {
 let textCollector = null;
 
 function textGroup(ctx, g, id, ax, ay, draw) {
-  const t = g.page.text?.[id] || {};
-  if (id === 'caption' && t.top) return textGroup(ctx, { ...g, page: { ...g.page, text: { ...g.page.text, caption: { ...t, top: false, dy: 0 } } } }, id, ax, ay, draw);
+  let t = g.page.text?.[id] || {};
+  // the bottom caption is locked to the bottom of the page (only its size and sideways position can change)
+  if (id === 'caption') t = { ...t, dy: 0, top: false };
+
   const dx = (t.dx || 0) * g.PW, dy = (t.dy || 0) * g.PH, s = t.scale || 1;
   const boxes = [];
   const prev = textCollector;
